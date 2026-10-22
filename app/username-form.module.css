@@ -1,0 +1,11 @@
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.error {
+  flex-basis: 100%;
+  margin: 0;
+  color: light-dark(oklch(50% 0.2 25), oklch(75% 0.15 25));
+}
