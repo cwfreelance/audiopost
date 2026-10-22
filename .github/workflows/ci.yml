@@ -18,5 +18,6 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
+      - run: node -e "require('@playwright/test').chromium.launch().then(async (b) => { const p = await b.newPage(); await p.setContent('<p>ok</p>'); console.log('chromium ok:', await p.textContent('p')); await b.close(); })"
       - run: npm run test:e2e
