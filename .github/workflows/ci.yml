@@ -18,6 +18,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+      # ponytail: no --with-deps; the runner image already has what headless Chromium needs, and the
+      # extras it adds (fonts, xvfb) download at ~50 kB/s from Ubuntu's mirror. Re-add it for screenshot or headed tests.
       - run: npx playwright install chromium
-      - run: node -e "require('@playwright/test').chromium.launch().then(async (b) => { const p = await b.newPage(); await p.setContent('<p>ok</p>'); console.log('chromium ok:', await p.textContent('p')); await b.close(); })"
       - run: npm run test:e2e
