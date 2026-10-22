@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { UsernameForm } from "@/app/username-form";
+import { parseUsername } from "@/lib/username";
 
 type Props = PageProps<"/[username]">;
 
@@ -14,14 +16,14 @@ export default function BlogPage({ params }: Props) {
       <main>
         {/* Cache Components: params are runtime data, so read them inside Suspense. */}
         <Suspense>
-          <Username params={params} />
+          <BlogHeading params={params} />
         </Suspense>
       </main>
     </>
   );
 }
 
-async function Username({ params }: Pick<Props, "params">) {
-  const { username } = await params;
+async function BlogHeading({ params }: Pick<Props, "params">) {
+  const username = parseUsername((await params).username) ?? notFound();
   return <h1>@{username}</h1>;
 }
