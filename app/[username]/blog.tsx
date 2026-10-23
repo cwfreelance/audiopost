@@ -4,7 +4,7 @@
 
 import DOMPurify from "dompurify";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UsernameForm } from "@/app/username-form";
 import type { AudioPost, ErrorResponse, PostsResponse } from "@/lib/posts";
 import styles from "./blog.module.css";
@@ -26,6 +26,12 @@ export function Blog({ username }: { username: string }) {
   const [page, setPage] = useState<PostsResponse>();
   const [error, setError] = useState<BlogError>();
   const [attempt, setAttempt] = useState(0);
+  // The one shared player: its source changes per track, because iOS only lets an audio element
+  // that already exists start the next track with the screen locked.
+  const audio = useRef<HTMLAudioElement>(null);
+  const [current, setCurrent] = useState<AudioPost>();
+  // The card expanded because it's playing, kept apart from the cards opened with "▾ more".
+  const [playExpanded, setPlayExpanded] = useState<string>();
   useEffect(() => {
     let stale = false;
     fetch(`/api/blogs/${username}/posts`)
@@ -40,6 +46,20 @@ export function Blog({ username }: { username: string }) {
       stale = true;
     };
   }, [username, attempt]);
+
+  // Clicking the playing card pauses or resumes it; any other native card starts from the top.
+  // play() runs inside the click, which is what lets browsers start audio.
+  function play(post: AudioPost, fileUrl: string) {
+    const player = audio.current!;
+    setPlayExpanded(post.id);
+    if (post.id === current?.id && !player.paused) return player.pause();
+    if (post.id !== current?.id) {
+      player.src = fileUrl;
+      setCurrent(post);
+    }
+    // A file that fails to load also fires the element's error event, which is where failures get handled.
+    player.play().catch(() => {});
+  }
 
   return (
     <>
@@ -61,7 +81,12 @@ export function Blog({ username }: { username: string }) {
             <ol className={styles.cards}>
               {page.posts.map((post) => (
                 <li key={post.id}>
-                  <Card post={post} />
+                  <Card
+                    post={post}
+                    playExpanded={post.id === playExpanded}
+                    onPlay={(fileUrl) => play(post, fileUrl)}
+                    onCollapse={() => setPlayExpanded((id) => (id === post.id ? undefined : id))}
+                  />
                 </li>
               ))}
             </ol>
@@ -79,6 +104,14 @@ export function Blog({ username }: { username: string }) {
           />
         )}
       </main>
+      <section className={styles.bar} aria-label="Now playing" hidden={!current}>
+        {current?.artUrl && <img src={current.artUrl} alt="" />}
+        <p>
+          {current?.title}
+          {current?.artist && ` — ${current.artist}`}
+        </p>
+        <audio ref={audio} controls controlsList="nodownload" />
+      </section>
     </>
   );
 }
@@ -106,27 +139,56 @@ function BlogErrorMessage({ username, error, onRetry }: { username: string; erro
   );
 }
 
-function Card({ post }: { post: AudioPost }) {
-  const [expanded, setExpanded] = useState(false);
+type CardProps = { post: AudioPost; playExpanded: boolean; onPlay: (fileUrl: string) => void; onCollapse: () => void };
+
+// Clicking anywhere on a card plays its native track; embed and link cards only expand for now.
+// The title is a button so keyboard users can do the same: its click bubbles up to the card. The
+// ↗ link, links in the post, and the more/less toggle stop their clicks from reaching the card.
+function Card({ post, playExpanded, onPlay, onCollapse }: CardProps) {
+  const [moreExpanded, setMoreExpanded] = useState(false);
+  const expanded = moreExpanded || playExpanded;
   const date = new Date(post.publishedAt * 1000);
   const body = DOMPurify.sanitize(post.bodyHtml, { FORBID_TAGS: ["style"], FORBID_ATTR: ["style"] });
   return (
-    <article className={expanded ? `${styles.card} ${styles.expanded}` : styles.card}>
+    <article
+      className={expanded ? `${styles.card} ${styles.expanded}` : styles.card}
+      onClick={() => (post.track.kind === "native" ? onPlay(post.track.fileUrl) : setMoreExpanded(true))}
+    >
       {post.artUrl && <img className={styles.art} src={post.artUrl} alt="" loading="lazy" />}
       <div>
         <h2>
-          {post.title}
-          {post.artist && ` — ${post.artist}`}
+          <button type="button">
+            {post.title}
+            {post.artist && ` — ${post.artist}`}
+          </button>
         </h2>
         <p className={styles.meta}>
           <time dateTime={date.toISOString()}>{date.toLocaleDateString(undefined, { dateStyle: "medium" })}</time>
           {post.rebloggedFrom && <span>reblogged from @{post.rebloggedFrom}</span>}
-          <a href={post.postUrl} target="_blank" rel="noopener noreferrer" aria-label="Open the original post">
+          <a
+            href={post.postUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open the original post"
+            onClick={(e) => e.stopPropagation()}
+          >
             ↗
           </a>
         </p>
-        <div className={expanded ? undefined : styles.preview} dangerouslySetInnerHTML={{ __html: body }} />
-        <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+        <div
+          className={expanded ? undefined : styles.preview}
+          onClick={(e) => (e.target as Element).closest("a") && e.stopPropagation()}
+          dangerouslySetInnerHTML={{ __html: body }}
+        />
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMoreExpanded(!expanded);
+            if (expanded) onCollapse();
+          }}
+        >
           <span aria-hidden="true">{expanded ? "▴" : "▾"}</span> {expanded ? "less" : "more"}
         </button>
       </div>

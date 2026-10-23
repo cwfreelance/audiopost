@@ -9,7 +9,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint",
     "test": "vitest run --exclude \"e2e/**\"",
-    "test:e2e": "playwright test --pass-with-no-tests",
+    "test:e2e": "playwright test",
     "record-fixtures": "node scripts/record-fixtures.mts"
   },
   "dependencies": {
