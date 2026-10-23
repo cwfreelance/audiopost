@@ -47,9 +47,9 @@ const statusOf = (queue: PlayQueue, post: AudioPost) => queue.statuses[post.id]?
 const SKIPPED = ["gone", "gave-up", "host-failed", "waking"];
 const playable = (queue: PlayQueue) => (post: AudioPost) =>
   post.track.kind === "native" && !SKIPPED.includes(statusOf(queue, post));
+const currentIndex = (queue: PlayQueue) => queue.posts.findIndex((post) => post.id === queue.current?.id);
 // The track auto-advance would play next.
-const ahead = (queue: PlayQueue) =>
-  queue.posts.slice(queue.posts.findIndex((post) => post.id === queue.current?.id) + 1).find(playable(queue));
+const ahead = (queue: PlayQueue) => queue.posts.slice(currentIndex(queue) + 1).find(playable(queue));
 
 export function playQueue(prev: PlayQueue, event: QueueEvent): PlayQueue {
   let next = step(prev, event);
@@ -62,7 +62,7 @@ export function playQueue(prev: PlayQueue, event: QueueEvent): PlayQueue {
   if (upcoming && host(upcoming) === CHECKED_HOST && statusOf(next, upcoming) === "idle") {
     next = withStatus(next, upcoming, { status: "checking", attempt: 1 });
   }
-  const after = next.posts.length - 1 - next.posts.findIndex((post) => post.id === current?.id);
+  const after = next.posts.length - 1 - currentIndex(next);
   return {
     ...next,
     // The current track plays as soon as it's ready, once.
@@ -111,8 +111,7 @@ function step(prev: PlayQueue, event: QueueEvent): PlayQueue {
   const queue = event.type === "posts" ? { ...prev, posts: event.posts, more: event.more } : prev;
   if (event.type === "posts" && !queue.waiting) return queue;
   if (event.type === "previous") {
-    const i = queue.posts.findIndex((post) => post.id === queue.current?.id);
-    const previous = queue.posts.slice(0, Math.max(i, 0)).findLast(playable(queue));
+    const previous = queue.posts.slice(0, Math.max(currentIndex(queue), 0)).findLast(playable(queue));
     return previous ? select(queue, previous) : queue;
   }
   // A track ended, next, or the posts a waiting queue asked for arrived.

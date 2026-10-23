@@ -75,7 +75,7 @@ await add("private", secondaryBlog, {}, false);
 type Keep = true | { [key: string]: Keep };
 const block: Keep = {
   type: true, subtype: true, text: true, indent_level: true,
-  formatting: { type: true, start: true, end: true, url: true, hex: true, blog: { name: true } },
+  formatting: { type: true, start: true, end: true, url: true, blog: { name: true } },
   provider: true, url: true, title: true, artist: true, album: true, embed_url: true,
   media: { url: true }, poster: { url: true },
 };
