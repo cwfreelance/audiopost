@@ -4,8 +4,9 @@
 
 import DOMPurify from "dompurify";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { UsernameForm } from "@/app/username-form";
+import { playQueue, type PlayQueue, type QueueEvent } from "@/lib/play-queue";
 import type { AudioPost, ErrorResponse, PostsResponse } from "@/lib/posts";
 import styles from "./blog.module.css";
 
@@ -29,9 +30,29 @@ export function Blog({ username }: { username: string }) {
   // The one shared player: its source changes per track, because iOS only lets an audio element
   // that already exists start the next track with the screen locked.
   const audio = useRef<HTMLAudioElement>(null);
-  const [current, setCurrent] = useState<AudioPost>();
   // The card expanded because it's playing, kept apart from the cards opened with "▾ more".
   const [playExpanded, setPlayExpanded] = useState<string>();
+  // The play queue decides what plays. `latest` mirrors it so events that arrive later (a page
+  // loading, the lock screen's buttons) step from the queue as it is now, not as it was.
+  const [queue, setQueue] = useState<PlayQueue>({ posts: [], more: false });
+  const latest = useRef(queue);
+  const current = queue.current;
+
+  // Steps the play queue and starts the track it moves to, expanding its card the way a click does.
+  // It runs inside the click, the ended event, or the media key, which is what lets browsers start audio.
+  const send = useCallback((event: QueueEvent) => {
+    const prev = latest.current;
+    const next = (latest.current = playQueue(prev, event));
+    setQueue(next);
+    const post = next.current;
+    if (post?.track.kind !== "native" || post.id === prev.current?.id) return;
+    const player = audio.current!;
+    player.src = post.track.fileUrl;
+    // A file that fails to load also fires the element's error event, which is where failures get handled.
+    player.play().catch(() => {});
+    setPlayExpanded(post.id);
+  }, []);
+
   useEffect(() => {
     let stale = false;
     fetch(`/api/blogs/${username}/posts`)
@@ -39,55 +60,77 @@ export function Blog({ username }: { username: string }) {
       .catch((): ErrorResponse => ({ error: { code: "network_error" } }))
       .then((body) => {
         if (stale) return;
-        if ("error" in body) setError({ ...body.error, at: new Date().toISOString() });
-        else setPage(body);
+        if ("error" in body) return setError({ ...body.error, at: new Date().toISOString() });
+        setPage(body);
+        send({ type: "posts", posts: body.posts, more: !!body.nextCursor });
       });
     return () => {
       stale = true;
     };
-  }, [username, attempt]);
+  }, [username, attempt, send]);
 
-  // The next page loads when the end of the list nears the viewport. The loading indicator at the
-  // end of the list is what's watched, so it shows exactly while there's more to load.
+  // Loads the next page, once per cursor: both the end of the list nearing the viewport and the
+  // play queue running low ask for it.
   const cursor = page?.nextCursor;
   const [moreError, setMoreError] = useState<BlogError>();
+  const loading = useRef<string>(undefined);
+  const loadMore = useEffectEvent(() => {
+    if (!cursor || moreError || loading.current === cursor) return;
+    loading.current = cursor;
+    fetch(`/api/blogs/${username}/posts?cursor=${encodeURIComponent(cursor)}`)
+      .then((res) => res.json() as Promise<PostsResponse | ErrorResponse>)
+      .catch((): ErrorResponse => ({ error: { code: "network_error" } }))
+      .then((next) => {
+        if ("error" in next) {
+          loading.current = undefined;
+          return setMoreError({ ...next.error, at: new Date().toISOString() });
+        }
+        const seen = new Set(latest.current.posts.map((post) => post.id));
+        const posts = [...latest.current.posts, ...next.posts.filter((post) => !seen.has(post.id))];
+        setPage((prev) => ({ ...prev!, posts, nextCursor: next.nextCursor }));
+        send({ type: "posts", posts, more: !!next.nextCursor });
+      });
+  });
+  // The loading indicator at the end of the list is what's watched, so it shows exactly while
+  // there's more to load.
   const end = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (!cursor || moreError) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry.isIntersecting) return;
-        observer.disconnect();
-        fetch(`/api/blogs/${username}/posts?cursor=${encodeURIComponent(cursor)}`)
-          .then((res) => res.json() as Promise<PostsResponse | ErrorResponse>)
-          .catch((): ErrorResponse => ({ error: { code: "network_error" } }))
-          .then((next) => {
-            if ("error" in next) return setMoreError({ ...next.error, at: new Date().toISOString() });
-            setPage((prev) => {
-              const seen = new Set(prev!.posts.map((post) => post.id));
-              const posts = [...prev!.posts, ...next.posts.filter((post) => !seen.has(post.id))];
-              return { ...prev!, posts, nextCursor: next.nextCursor };
-            });
-          });
-      },
-      { rootMargin: "1000px" },
-    );
+    const observer = new IntersectionObserver(([entry]) => entry.isIntersecting && loadMore(), {
+      rootMargin: "1000px",
+    });
     observer.observe(end.current!);
     return () => observer.disconnect();
-  }, [username, cursor, moreError]);
+  }, [cursor, moreError]);
+  // A new cursor re-asks, so a queue still waiting for a native track keeps loading pages.
+  useEffect(() => {
+    if (queue.loadMore) loadMore();
+  }, [queue.loadMore, cursor, moreError]);
+
+  // The lock screen, headphone, and keyboard media keys drive the same queue as the bar's buttons.
+  useEffect(() => {
+    const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
+      ["play", () => audio.current?.play().catch(() => {})],
+      ["pause", () => audio.current?.pause()],
+      ["previoustrack", () => send({ type: "previous" })],
+      ["nexttrack", () => send({ type: "next" })],
+    ];
+    for (const [action, handler] of handlers) navigator.mediaSession.setActionHandler(action, handler);
+    return () => handlers.forEach(([action]) => navigator.mediaSession.setActionHandler(action, null));
+  }, [send]);
+  useEffect(() => {
+    if (!current) return;
+    const { title, artist, album, artUrl } = current;
+    navigator.mediaSession.metadata = new MediaMetadata({ title, artist, album, artwork: artUrl ? [{ src: artUrl }] : [] });
+  }, [current]);
 
   // Clicking the playing card pauses or resumes it; any other native card starts from the top.
-  // play() runs inside the click, which is what lets browsers start audio.
-  function play(post: AudioPost, fileUrl: string) {
+  function play(post: AudioPost) {
+    if (post.id !== current?.id) return send({ type: "pick", post });
     const player = audio.current!;
     setPlayExpanded(post.id);
-    if (post.id === current?.id && !player.paused) return player.pause();
-    if (post.id !== current?.id) {
-      player.src = fileUrl;
-      setCurrent(post);
-    }
-    // A file that fails to load also fires the element's error event, which is where failures get handled.
-    player.play().catch(() => {});
+    if (player.paused) player.play().catch(() => {});
+    else player.pause();
   }
 
   return (
@@ -113,7 +156,7 @@ export function Blog({ username }: { username: string }) {
                   <Card
                     post={post}
                     playExpanded={post.id === playExpanded}
-                    onPlay={(fileUrl) => play(post, fileUrl)}
+                    onPlay={() => play(post)}
                     onCollapse={() => setPlayExpanded((id) => (id === post.id ? undefined : id))}
                   />
                 </li>
@@ -148,7 +191,13 @@ export function Blog({ username }: { username: string }) {
           {current?.title}
           {current?.artist && ` — ${current.artist}`}
         </p>
-        <audio ref={audio} controls controlsList="nodownload" />
+        <button type="button" aria-label="Previous track" onClick={() => send({ type: "previous" })}>
+          ◀◀
+        </button>
+        <button type="button" aria-label="Next track" onClick={() => send({ type: "next" })}>
+          ▶▶
+        </button>
+        <audio ref={audio} controls controlsList="nodownload" onEnded={() => send({ type: "ended" })} />
       </section>
     </>
   );
@@ -177,7 +226,7 @@ function BlogErrorMessage({ username, error, onRetry }: { username: string; erro
   );
 }
 
-type CardProps = { post: AudioPost; playExpanded: boolean; onPlay: (fileUrl: string) => void; onCollapse: () => void };
+type CardProps = { post: AudioPost; playExpanded: boolean; onPlay: () => void; onCollapse: () => void };
 
 // Clicking anywhere on a card plays its native track; embed and link cards only expand for now.
 // The title is a button so keyboard users can do the same: its click bubbles up to the card. The
@@ -190,7 +239,7 @@ function Card({ post, playExpanded, onPlay, onCollapse }: CardProps) {
   return (
     <article
       className={expanded ? `${styles.card} ${styles.expanded}` : styles.card}
-      onClick={() => (post.track.kind === "native" ? onPlay(post.track.fileUrl) : setMoreExpanded(true))}
+      onClick={() => (post.track.kind === "native" ? onPlay() : setMoreExpanded(true))}
     >
       {post.artUrl && <img className={styles.art} src={post.artUrl} alt="" loading="lazy" />}
       <div>
