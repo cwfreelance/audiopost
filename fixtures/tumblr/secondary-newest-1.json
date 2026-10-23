@@ -1,0 +1,106 @@
+{
+  "request": {
+    "blog": "blog-2",
+    "path": "posts/audio",
+    "params": {
+      "npf": "true",
+      "reblog_info": "true",
+      "limit": "20"
+    }
+  },
+  "status": 200,
+  "body": {
+    "meta": {
+      "status": 200,
+      "msg": "OK"
+    },
+    "response": {
+      "blog": {
+        "name": "blog-2",
+        "url": "https://blog-2.tumblr.com/"
+      },
+      "posts": [
+        {
+          "id_string": "100000000000000082",
+          "post_url": "https://blog-2.tumblr.com/post/100000000000000082",
+          "timestamp": 1792672679,
+          "content": [
+            {
+              "type": "text",
+              "text": "xxxxxxx xxxxx",
+              "subtype": "heading1"
+            },
+            {
+              "type": "audio",
+              "provider": "spotify",
+              "url": "https://open.spotify.com/track/1h0R5cstHZ070tevUAfEo7",
+              "title": "Illegal Smile",
+              "artist": "John Prine",
+              "album": "John Prine",
+              "embed_url": "https://open.spotify.com/embed?uri=https%3A%2F%2Fopen.spotify.com%2Ftrack%2F1h0R5cstHZ070tevUAfEo7&amp;view=coverart",
+              "poster": [
+                {
+                  "url": "https://64.media.tumblr.com/6a07e000f428193ef875d9f2d996a782/4d86c01eab5b9579-e2/s640x960/8109fdb3874665c7365badc68ae75f254fa40a33.jpg"
+                }
+              ]
+            }
+          ],
+          "trail": []
+        },
+        {
+          "id_string": "100000000000000083",
+          "post_url": "https://blog-2.tumblr.com/post/100000000000000083",
+          "timestamp": 1792672603,
+          "content": [
+            {
+              "type": "audio",
+              "provider": "bandcamp",
+              "url": "https://blog-1.bandcamp.com/track/track-23",
+              "title": "track-23",
+              "artist": "artist-1",
+              "embed_url": "https://bandcamp.com/EmbeddedPlayer/size=medium/bgcol=ffffff/linkcol=0687f5/notracklist=true/transparent=true/track=1000000084/",
+              "media": {
+                "url": "https://bandcamp.com/stream_redirect?enc=mp3-128&track_id=1000000084&ts=1792672574&t=54c8c4fcba494567757ecadcd2dd79f51557f803"
+              },
+              "poster": [
+                {
+                  "url": "https://64.media.tumblr.com/00000000000000000000000000000000/0000000000000000-00/s400x600/0000000000000000000000000000000000000000.jpg"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "Xxxxxx/xxxxxxxx: Xxxxxxxxxx Xx Xxxxxxxx xx Xxxxx Xxxxxx",
+              "formatting": [
+                {
+                  "type": "link",
+                  "start": 17,
+                  "end": 55,
+                  "url": "https://blog-1.bandcamp.com/track/track-23"
+                }
+              ]
+            }
+          ],
+          "trail": []
+        },
+        {
+          "id_string": "10000085",
+          "post_url": "https://blog-2.tumblr.com/post/10000085",
+          "timestamp": 1239854169,
+          "content": [
+            {
+              "type": "audio",
+              "provider": "tumblr",
+              "url": null,
+              "media": {
+                "url": "https://a.tumblr.com/wkdTW9Ayrmcgrmp0mBdxUeHYo1.mp3?play_key=e6ba8f023e92bbb5aaf06052cd0c6551"
+              }
+            }
+          ],
+          "trail": []
+        }
+      ],
+      "total_posts": 3
+    }
+  }
+}

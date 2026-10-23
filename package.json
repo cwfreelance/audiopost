@@ -8,10 +8,12 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint",
-    "test": "vitest run --passWithNoTests --exclude \"e2e/**\"",
-    "test:e2e": "playwright test --pass-with-no-tests"
+    "test": "vitest run --exclude \"e2e/**\"",
+    "test:e2e": "playwright test",
+    "record-fixtures": "node scripts/record-fixtures.mts"
   },
   "dependencies": {
+    "dompurify": "^3.4.17",
     "next": "16.4.2",
     "react": "19.3.0",
     "react-dom": "19.3.0"
@@ -25,5 +27,6 @@
     "eslint-config-next": "16.4.2",
     "typescript": "^5",
     "vitest": "^5.0.5"
-  }
+  },
+  "packageManager": "pnpm@10.33.2"
 }

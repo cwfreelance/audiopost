@@ -1,0 +1,144 @@
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+
+  > h1 {
+    margin: 0;
+    font-size: 1.5rem;
+  }
+}
+
+.avatar {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+}
+
+.cards {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The whole card plays its track; the title is the real button, for keyboards. */
+.card {
+  display: flex;
+  gap: 0.75rem;
+  cursor: pointer;
+
+  > div {
+    min-width: 0;
+  }
+
+  h2 {
+    margin: 0;
+    font-size: 1rem;
+
+    > button {
+      padding: 0;
+      border: 0;
+      background: none;
+      color: inherit;
+      font: inherit;
+      text-align: start;
+      cursor: inherit;
+    }
+  }
+}
+
+.art {
+  flex: none;
+  width: 4rem;
+  height: 4rem;
+  object-fit: cover;
+}
+
+/* An expanded card's larger art; the text wraps below it on narrow screens. */
+.expanded {
+  flex-wrap: wrap;
+
+  > div {
+    flex: 1 1 15rem;
+  }
+
+  .art {
+    width: 12rem;
+    height: 12rem;
+  }
+}
+
+/* Provider players, one height that fits SoundCloud's, Spotify's, and Bandcamp's compact layouts. */
+.embed {
+  display: block;
+  width: 100%;
+  height: 166px;
+  border: 0;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.75rem;
+  margin: 0.25rem 0;
+  font-size: 0.875rem;
+}
+
+/* The collapsed card's two-line preview of the sanitized body. */
+.preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+
+  > * {
+    margin: 0;
+  }
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+
+  > p {
+    flex-basis: 100%;
+    margin: 0;
+  }
+}
+
+/* The now-playing bar sticks to the bottom of the viewport while the list scrolls under it. */
+.bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0;
+  background: Canvas;
+
+  &[hidden] {
+    display: none;
+  }
+
+  > img {
+    width: 3rem;
+    height: 3rem;
+    object-fit: cover;
+  }
+
+  > p {
+    flex: 1 1 10rem;
+    margin: 0;
+  }
+
+  > audio {
+    flex: 1 1 15rem;
+  }
+}
