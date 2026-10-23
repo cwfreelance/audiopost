@@ -50,10 +50,15 @@ export async function GET(request: Request, ctx: RouteContext<"/api/blogs/[usern
       const cache = cursor ? "s-maxage=86400" : "s-maxage=300, stale-while-revalidate=3600";
       return Response.json(body, { headers: { "Cache-Control": cache } });
     }
+    if (res.status === 429) return error(429, { code: "rate_limited" });
+    if (res.status === 404) {
+      // A private blog is a 404 too, told apart by its error code (docs/adr/0001-tumblr-npf-format.md).
+      const { errors } = (await res.json()) as { errors?: { code: number }[] };
+      return errors?.[0]?.code === 4012 ? error(403, { code: "blog_private" }) : error(404, { code: "blog_not_found" });
+    }
   } catch {
     // A network failure or a body we can't read: reported as upstream_error below.
   }
-  // ponytail: every failure is upstream_error until the error-mapping ticket adds the other codes.
   return error(502, { code: "upstream_error", upstreamStatus: res?.status });
 }
 

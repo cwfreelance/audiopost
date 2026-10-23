@@ -5,6 +5,7 @@ import mainNewest from "@/fixtures/tumblr/main-newest-1.json";
 import mainNewest2 from "@/fixtures/tumblr/main-newest-2.json";
 import mainOldest2 from "@/fixtures/tumblr/main-oldest-2.json";
 import notFound from "@/fixtures/tumblr/not-found.json";
+import privateBlog from "@/fixtures/tumblr/private.json";
 import secondaryNewest from "@/fixtures/tumblr/secondary-newest-1.json";
 import { GET } from "./route";
 
@@ -176,13 +177,44 @@ test.each(["bad_name", "no!", "a".repeat(33), "blog.tumblr.com", "@blog-1"])(
   },
 );
 
-test("a Tumblr error status is a 502 upstream_error carrying that status, never cached", async () => {
+test("a blog Tumblr can't find is a 404 blog_not_found, never cached", async () => {
   fakeTumblr(notFound);
 
   const { res, body } = await getPosts("blog-12");
 
+  expect(res.status).toBe(404);
+  expect(body).toEqual({ error: { code: "blog_not_found" } });
+  expect(res.headers.get("Cache-Control")).toBe("no-store");
+});
+
+test("a blog hidden from logged-out visitors is a 403 blog_private, never cached", async () => {
+  fakeTumblr(privateBlog);
+
+  const { res, body } = await getPosts("blog-2");
+
+  expect(res.status).toBe(403);
+  expect(body).toEqual({ error: { code: "blog_private" } });
+  expect(res.headers.get("Cache-Control")).toBe("no-store");
+});
+
+test("Tumblr's 429 is a 429 rate_limited, never cached", async () => {
+  fakeTumblr({ status: 429, body: { meta: { status: 429, msg: "Limit Exceeded" }, response: [] } });
+
+  const { res, body } = await getPosts("blog-1");
+
+  expect(res.status).toBe(429);
+  expect(body).toEqual({ error: { code: "rate_limited" } });
+  expect(res.headers.get("Cache-Control")).toBe("no-store");
+});
+
+test("a Tumblr 5xx is a 502 upstream_error carrying Tumblr's status, never cached", async () => {
+  tumblr = vi.fn(async () => new Response("<html>Service Unavailable</html>", { status: 503 }));
+  vi.stubGlobal("fetch", tumblr);
+
+  const { res, body } = await getPosts("blog-1");
+
   expect(res.status).toBe(502);
-  expect(body).toEqual({ error: { code: "upstream_error", upstreamStatus: 404 } });
+  expect(body).toEqual({ error: { code: "upstream_error", upstreamStatus: 503 } });
   expect(res.headers.get("Cache-Control")).toBe("no-store");
 });
 
