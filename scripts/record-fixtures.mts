@@ -1,5 +1,5 @@
 // Records real Tumblr responses for the fixture blogs and writes scrubbed copies for the tests.
-// Run by hand only, never in CI: `npm run record-fixtures`. See docs/adr/0001-tumblr-npf-format.md.
+// Run by hand only, never in CI: `pnpm run record-fixtures`. See docs/adr/0001-tumblr-npf-format.md.
 //
 // Raw responses go to fixtures/raw/ (gitignored). A raw file that already exists is reused, not
 // refetched, so re-running costs no API calls; delete a raw file to re-record it. Scrubbed copies go

@@ -34,7 +34,7 @@ Measured on 2026-10-23 against all 466 audio posts on the main fixture blog and 
 
 ## Fixtures
 
-`npm run record-fixtures` (`scripts/record-fixtures.mts`) records into `fixtures/raw/` (gitignored) and writes scrubbed copies to `fixtures/tumblr/`, each `{ request, status, body }`. A raw file that exists is reused, so the secondary fixture blog's public posts survive it going private. Only the fields above are kept, and nothing in them should lead a web search back to the maintainer:
+`pnpm run record-fixtures` (`scripts/record-fixtures.mts`) records into `fixtures/raw/` (gitignored) and writes scrubbed copies to `fixtures/tumblr/`, each `{ request, status, body }`. A raw file that exists is reused, so the secondary fixture blog's public posts survive it going private. Only the fields above are kept, and nothing in them should lead a web search back to the maintainer:
 
 - Blog usernames become `blog-1` (main fixture blog), `blog-2` (secondary fixture blog), `blog-3`…, and the strings in `FIXTURE_SCRUB` (`.env.local`; the maintainer's artist name) become `artist-1`…, everywhere, URLs included.
 - Text block `text` is masked (letters to `x`/`X`, digits to `0`) at its original length, so `formatting` ranges still line up. This departs from the spec's "captions are kept as written": every caption is verbatim from a public post, so searching any sentence would find it.
