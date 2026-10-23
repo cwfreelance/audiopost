@@ -65,3 +65,15 @@
     margin: 0;
   }
 }
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+
+  > p {
+    flex-basis: 100%;
+    margin: 0;
+  }
+}

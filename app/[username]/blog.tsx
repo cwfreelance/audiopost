@@ -23,13 +23,23 @@ if (DOMPurify.isSupported) {
 // Fetched from the browser, not during server rendering, so repeat lookups come from the edge cache
 // and the smoke test can fake the API.
 export function Blog({ username }: { username: string }) {
-  const [data, setData] = useState<PostsResponse | ErrorResponse>();
+  const [page, setPage] = useState<PostsResponse>();
+  const [error, setError] = useState<BlogError>();
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    let stale = false;
     fetch(`/api/blogs/${username}/posts`)
-      .then((res) => res.json())
-      .then(setData, () => setData({ error: { code: "network_error" } }));
-  }, [username]);
-  const page = data && "blog" in data ? data : undefined;
+      .then((res) => res.json() as Promise<PostsResponse | ErrorResponse>)
+      .catch((): ErrorResponse => ({ error: { code: "network_error" } }))
+      .then((body) => {
+        if (stale) return;
+        if ("error" in body) setError({ ...body.error, at: new Date().toISOString() });
+        else setPage(body);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [username, attempt]);
 
   return (
     <>
@@ -46,23 +56,53 @@ export function Blog({ username }: { username: string }) {
         <UsernameForm />
       </header>
       <main>
-        {data && "error" in data && (
-          // ponytail: one message for every error until the error-mapping ticket.
-          <p role="alert">
-            Couldn&apos;t reach Tumblr. Try again. ({data.error.code})
-          </p>
-        )}
-        {page && (
-          <ol className={styles.cards}>
-            {page.posts.map((post) => (
-              <li key={post.id}>
-                <Card post={post} />
-              </li>
-            ))}
-          </ol>
+        {page &&
+          (page.posts.length ? (
+            <ol className={styles.cards}>
+              {page.posts.map((post) => (
+                <li key={post.id}>
+                  <Card post={post} />
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p>Sorry, @{username} hasn&apos;t posted any audio.</p>
+          ))}
+        {error && (
+          <BlogErrorMessage
+            username={username}
+            error={error}
+            onRetry={() => {
+              setError(undefined);
+              setAttempt((n) => n + 1);
+            }}
+          />
         )}
       </main>
     </>
+  );
+}
+
+// A failed fetch, with the UTC time it failed for the bug report.
+type BlogError = ErrorResponse["error"] & { at: string };
+
+function BlogErrorMessage({ username, error, onRetry }: { username: string; error: BlogError; onRetry: () => void }) {
+  if (error.code === "blog_not_found") return <p role="alert">Sorry, we couldn&apos;t find a blog named @{username}</p>;
+  if (error.code === "blog_private") return <p role="alert">Sorry, @{username}&apos;s blog is set to private</p>;
+  if (error.code === "rate_limited") {
+    return <p role="alert">Oops! Tumblr is rate-limiting us. Try again in a little bit.</p>;
+  }
+  const code = error.upstreamStatus ? `${error.code} ${error.upstreamStatus}` : error.code;
+  const issueTitle = encodeURIComponent(`Bug report: ${code} ${error.at}`);
+  return (
+    <div role="alert" className={styles.error}>
+      <p>Couldn&apos;t reach Tumblr. Try again.</p>
+      <button type="button" onClick={onRetry}>
+        Try again
+      </button>
+      <code>{code}</code>
+      <a href={`https://github.com/cwfreelance/audiopost/issues/new?title=${issueTitle}`}>Bug? Report on GitHub</a>
+    </div>
   );
 }
 
