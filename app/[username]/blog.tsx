@@ -90,6 +90,12 @@ export function Blog({ username }: { username: string }) {
     player.play().catch(() => {});
   }
 
+  // An embed card plays in its provider's player, so the shared player pauses: two things never play at once.
+  function openEmbed(post: AudioPost) {
+    audio.current!.pause();
+    setPlayExpanded(post.id);
+  }
+
   return (
     <>
       <header className={styles.header}>
@@ -114,6 +120,7 @@ export function Blog({ username }: { username: string }) {
                     post={post}
                     playExpanded={post.id === playExpanded}
                     onPlay={(fileUrl) => play(post, fileUrl)}
+                    onEmbed={() => openEmbed(post)}
                     onCollapse={() => setPlayExpanded((id) => (id === post.id ? undefined : id))}
                   />
                 </li>
@@ -177,12 +184,18 @@ function BlogErrorMessage({ username, error, onRetry }: { username: string; erro
   );
 }
 
-type CardProps = { post: AudioPost; playExpanded: boolean; onPlay: (fileUrl: string) => void; onCollapse: () => void };
+type CardProps = {
+  post: AudioPost;
+  playExpanded: boolean;
+  onPlay: (fileUrl: string) => void;
+  onEmbed: () => void;
+  onCollapse: () => void;
+};
 
-// Clicking anywhere on a card plays its native track; embed and link cards only expand for now.
+// Clicking anywhere on a card plays its native track or opens its embed; link cards only expand.
 // The title is a button so keyboard users can do the same: its click bubbles up to the card. The
-// ↗ link, links in the post, and the more/less toggle stop their clicks from reaching the card.
-function Card({ post, playExpanded, onPlay, onCollapse }: CardProps) {
+// links and the more/less toggle stop their clicks from reaching the card.
+function Card({ post, playExpanded, onPlay, onEmbed, onCollapse }: CardProps) {
   const [moreExpanded, setMoreExpanded] = useState(false);
   const expanded = moreExpanded || playExpanded;
   const date = new Date(post.publishedAt * 1000);
@@ -190,7 +203,11 @@ function Card({ post, playExpanded, onPlay, onCollapse }: CardProps) {
   return (
     <article
       className={expanded ? `${styles.card} ${styles.expanded}` : styles.card}
-      onClick={() => (post.track.kind === "native" ? onPlay(post.track.fileUrl) : setMoreExpanded(true))}
+      onClick={() => {
+        if (post.track.kind === "native") onPlay(post.track.fileUrl);
+        else if (post.track.kind === "embed") onEmbed();
+        else setMoreExpanded(true);
+      }}
     >
       {post.artUrl && <img className={styles.art} src={post.artUrl} alt="" loading="lazy" />}
       <div>
@@ -213,6 +230,22 @@ function Card({ post, playExpanded, onPlay, onCollapse }: CardProps) {
             ↗
           </a>
         </p>
+        {/* The app's own iframe, from the embed URL the posts API checked against the provider
+            allowlist. It only exists while the card is expanded, so collapsing stops its audio. */}
+        {expanded && post.track.kind === "embed" && (
+          <iframe
+            className={styles.embed}
+            src={post.track.embedUrl}
+            title={`${post.title} on ${providerName(post.track.provider)}`}
+            sandbox="allow-scripts allow-same-origin allow-popups"
+            allow="autoplay; encrypted-media"
+          />
+        )}
+        {post.track.kind === "link" && (
+          <a href={post.track.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+            Listen on {providerName(post.track.provider)} ↗
+          </a>
+        )}
         <div
           className={expanded ? undefined : styles.preview}
           onClick={(e) => (e.target as Element).closest("a") && e.stopPropagation()}
@@ -232,4 +265,9 @@ function Card({ post, playExpanded, onPlay, onCollapse }: CardProps) {
       </div>
     </article>
   );
+}
+
+// Providers arrive as Tumblr's lowercase ids ("soundcloud", "tumblr").
+function providerName(provider: string) {
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
