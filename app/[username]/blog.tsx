@@ -44,7 +44,7 @@ export function Blog({ username }: { username: string }) {
   // The next page loads when the end of the list nears the viewport. The loading indicator at the
   // end of the list is what's watched, so it shows exactly while there's more to load.
   const cursor = page?.nextCursor;
-  const [moreError, setMoreError] = useState<string>();
+  const [moreError, setMoreError] = useState<BlogError>();
   const end = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (!cursor || moreError) return;
@@ -53,19 +53,16 @@ export function Blog({ username }: { username: string }) {
         if (!entry.isIntersecting) return;
         observer.disconnect();
         fetch(`/api/blogs/${username}/posts?cursor=${encodeURIComponent(cursor)}`)
-          .then((res) => res.json())
-          .then((next: PostsResponse | ErrorResponse) => {
-            if ("error" in next) return setMoreError(next.error.code);
-            setData((prev) => {
-              const { posts } = prev as PostsResponse;
-              const seen = new Set(posts.map((post) => post.id));
-              return {
-                ...(prev as PostsResponse),
-                posts: [...posts, ...next.posts.filter((post) => !seen.has(post.id))],
-                nextCursor: next.nextCursor,
-              };
+          .then((res) => res.json() as Promise<PostsResponse | ErrorResponse>)
+          .catch((): ErrorResponse => ({ error: { code: "network_error" } }))
+          .then((next) => {
+            if ("error" in next) return setMoreError({ ...next.error, at: new Date().toISOString() });
+            setPage((prev) => {
+              const seen = new Set(prev!.posts.map((post) => post.id));
+              const posts = [...prev!.posts, ...next.posts.filter((post) => !seen.has(post.id))];
+              return { ...prev!, posts, nextCursor: next.nextCursor };
             });
-          }, () => setMoreError("network_error"));
+          });
       },
       { rootMargin: "1000px" },
     );
@@ -111,12 +108,7 @@ export function Blog({ username }: { username: string }) {
           />
         )}
         {moreError ? (
-          <p role="alert">
-            Couldn&apos;t reach Tumblr. Try again. ({moreError}){" "}
-            <button type="button" onClick={() => setMoreError(undefined)}>
-              Try again
-            </button>
-          </p>
+          <BlogErrorMessage username={username} error={moreError} onRetry={() => setMoreError(undefined)} />
         ) : (
           cursor && (
             <p ref={end} role="status">
