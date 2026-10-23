@@ -20,7 +20,10 @@ test("enter a username, click a card, and the now-playing bar plays it", async (
       },
     }),
   );
-  await page.route("https://a.tumblr.com/**", (route) => route.fulfill({ path: `${__dirname}/silence.mp3` }));
+  // Tumblr's CDN allows cross-origin reads, which the file check before playing relies on.
+  await page.route("https://a.tumblr.com/**", (route) =>
+    route.fulfill({ path: `${__dirname}/silence.mp3`, headers: { "access-control-allow-origin": "*" } }),
+  );
 
   await page.goto("/");
   await page.getByLabel("Tumblr username").fill("blog-1");

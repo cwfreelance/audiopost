@@ -5,9 +5,9 @@
 import DOMPurify from "dompurify";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { UsernameForm } from "@/app/username-form";
-import { playQueue, type PlayQueue, type QueueEvent } from "@/lib/play-queue";
+import { playQueue, type PlayQueue, type QueueEvent, type TrackStatus } from "@/lib/play-queue";
 import type { AudioPost, ErrorResponse, PostsResponse } from "@/lib/posts";
 import { parseView } from "@/lib/view";
 import styles from "./blog.module.css";
@@ -55,24 +55,39 @@ export function Blog({ username }: { username: string }) {
   const [playExpanded, setPlayExpanded] = useState<string>();
   // The play queue decides what plays. `latest` mirrors it so events that arrive later (a page
   // loading, the lock screen's buttons) step from the queue as it is now, not as it was.
-  const [queue, setQueue] = useState<PlayQueue>({ posts: [], more: false });
+  const [queue, setQueue] = useState<PlayQueue>({ posts: [], more: false, statuses: {}, checks: [] });
   const latest = useRef(queue);
   const current = queue.current;
 
-  // Steps the play queue and starts the track it moves to, expanding its card the way a click does.
-  // It runs inside the click, the ended event, or the media key, which is what lets browsers start audio.
-  const send = useCallback((event: QueueEvent) => {
+  // Steps the play queue and does what it says: checks the files it asks about, sending each result
+  // back, and starts the track it's ready to play. A track usually starts inside the click, the
+  // ended event, or the media key, which is what lets browsers start audio.
+  const send = useCallback(function send(event: QueueEvent) {
     const prev = latest.current;
     const next = (latest.current = playQueue(prev, event));
     setQueue(next);
-    const post = next.current;
-    if (post?.track.kind !== "native" || post.id === prev.current?.id) return;
+    for (const post of next.checks) {
+      if (post.track.kind !== "native") continue;
+      checkFile(post.track.fileUrl).then((status) => send({ type: "checked", post, status, now: Date.now() }));
+    }
+    const moved = next.current?.id !== prev.current?.id;
+    // The card moved to expands the way a click does, so its status shows while its file is checked.
+    if (moved && next.current) setPlayExpanded(next.current.id);
     const player = audio.current!;
-    player.src = post.track.fileUrl;
-    // A file that fails to load also fires the element's error event, which is where failures get handled.
-    player.play().catch(() => {});
-    setPlayExpanded(post.id);
+    if (next.play?.track.kind === "native") {
+      player.src = next.play.track.fileUrl;
+      // A file that fails to load also fires the element's error event, which is where failures get handled.
+      player.play().catch(() => {});
+    } else if (moved) player.pause();
   }, []);
+
+  // The queue's clock, while a track is waking: its countdown and its retry run off it.
+  const waking = Object.values(queue.statuses).some((s) => s.status === "waking");
+  useEffect(() => {
+    if (!waking) return;
+    const clock = setInterval(() => send({ type: "tick", now: Date.now() }), 1000);
+    return () => clearInterval(clock);
+  }, [waking, send]);
 
   useEffect(() => {
     let stale = false;
@@ -155,7 +170,7 @@ export function Blog({ username }: { username: string }) {
 
   // Clicking the playing card pauses or resumes it; any other native card starts from the top.
   function play(post: AudioPost) {
-    if (post.id !== current?.id) return send({ type: "pick", post });
+    if (post.id !== current?.id || queue.statuses[post.id]?.status !== "ready") return send({ type: "pick", post });
     const player = audio.current!;
     setPlayExpanded(post.id);
     if (player.paused) player.play().catch(() => {});
@@ -192,8 +207,11 @@ export function Blog({ username }: { username: string }) {
                 <li key={post.id}>
                   <Card
                     post={post}
+                    status={queue.statuses[post.id]}
+                    now={queue.now}
                     playExpanded={post.id === playExpanded}
                     onPlay={() => play(post)}
+                    onRetry={() => send({ type: "retry", post })}
                     onEmbed={() => openEmbed(post)}
                     onCollapse={() => setPlayExpanded((id) => (id === post.id ? undefined : id))}
                   />
@@ -237,7 +255,13 @@ export function Blog({ username }: { username: string }) {
         <button type="button" aria-label="Next track" onClick={() => send({ type: "next" })}>
           ▶▶
         </button>
-        <audio ref={audio} controls controlsList="nodownload" onEnded={() => send({ type: "ended" })} />
+        <audio
+          ref={audio}
+          controls
+          controlsList="nodownload"
+          onEnded={() => send({ type: "ended" })}
+          onError={() => send({ type: "error" })}
+        />
       </section>
     </>
   );
@@ -268,20 +292,38 @@ function BlogErrorMessage({ username, error, onRetry }: { username: string; erro
 
 type CardProps = {
   post: AudioPost;
+  status?: TrackStatus;
+  now?: number;
   playExpanded: boolean;
   onPlay: () => void;
+  onRetry: () => void;
   onEmbed: () => void;
   onCollapse: () => void;
 };
 
 // Clicking anywhere on a card plays its native track or opens its embed; link cards only expand.
 // The title is a button so keyboard users can do the same: its click bubbles up to the card. The
-// links and the more/less toggle stop their clicks from reaching the card.
-function Card({ post, playExpanded, onPlay, onEmbed, onCollapse }: CardProps) {
+// links, the more/less toggle, and Try again stop their clicks from reaching the card.
+function Card({ post, status, now = 0, playExpanded, onPlay, onRetry, onEmbed, onCollapse }: CardProps) {
   const [moreExpanded, setMoreExpanded] = useState(false);
   const expanded = moreExpanded || playExpanded;
   const date = new Date(post.publishedAt * 1000);
-  const body = DOMPurify.sanitize(post.bodyHtml, { FORBID_TAGS: ["style"], FORBID_ATTR: ["style"] });
+  // Memoized: every card re-renders each second while a track's retry counts down.
+  const body = useMemo(
+    () => DOMPurify.sanitize(post.bodyHtml, { FORBID_TAGS: ["style"], FORBID_ATTR: ["style"] }),
+    [post.bodyHtml],
+  );
+  const retry = (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onRetry();
+      }}
+    >
+      Try again
+    </button>
+  );
   return (
     <article
       className={expanded ? `${styles.card} ${styles.expanded}` : styles.card}
@@ -312,6 +354,24 @@ function Card({ post, playExpanded, onPlay, onEmbed, onCollapse }: CardProps) {
             ↗
           </a>
         </p>
+        {status?.status === "waking" && (
+          <p>
+            Waking this file up. Tumblr hasn&apos;t served it in a while. Retrying in{" "}
+            {Math.ceil((status.retryAt - now) / 1000)}s…
+          </p>
+        )}
+        {status?.status === "gave-up" && (
+          <p>
+            This file hasn&apos;t been opened in a while. Trying again usually fixes it -- if not, the file may be
+            corrupted. {retry}
+          </p>
+        )}
+        {status?.status === "gone" && <p>This file has been deleted from Tumblr.</p>}
+        {status?.status === "host-failed" && (
+          <p>
+            This file was hosted on {status.host}, which doesn&apos;t seem to be serving it anymore. {retry}
+          </p>
+        )}
         {/* The app's own iframe, from the embed URL the posts API checked against the provider
             allowlist. It only exists while the card is expanded, so collapsing stops its audio. */}
         {expanded && post.track.kind === "embed" && (
@@ -346,6 +406,18 @@ function Card({ post, playExpanded, onPlay, onEmbed, onCollapse }: CardProps) {
         </button>
       </div>
     </article>
+  );
+}
+
+// Reads a file's HTTP status with a 2-byte range request, dropping the body once the status
+// arrives. A request that fails outright reads as 0. Only Tumblr's CDN allows this cross-origin.
+function checkFile(url: string) {
+  return fetch(url, { headers: { Range: "bytes=0-1" }, cache: "no-store" }).then(
+    (res) => {
+      res.body?.cancel().catch(() => {});
+      return res.status;
+    },
+    () => 0,
   );
 }
 
