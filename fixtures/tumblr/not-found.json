@@ -1,0 +1,26 @@
+{
+  "request": {
+    "blog": "blog-12",
+    "path": "posts/audio",
+    "params": {
+      "npf": "true",
+      "reblog_info": "true",
+      "limit": "20"
+    }
+  },
+  "status": 404,
+  "body": {
+    "meta": {
+      "status": 404,
+      "msg": "Not Found"
+    },
+    "errors": [
+      {
+        "title": "Not Found",
+        "code": 0,
+        "detail": "Hit a snag. Try again."
+      }
+    ],
+    "response": []
+  }
+}
