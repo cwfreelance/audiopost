@@ -91,15 +91,12 @@ export function Blog({ username }: { username: string }) {
 
   useEffect(() => {
     let stale = false;
-    fetch(postsUrl)
-      .then((res) => res.json() as Promise<PostsResponse | ErrorResponse>)
-      .catch((): ErrorResponse => ({ error: { code: "network_error" } }))
-      .then((body) => {
-        if (stale) return;
-        if ("error" in body) return setError({ ...body.error, at: new Date().toISOString() });
-        setPage(body);
-        send({ type: "posts", posts: body.posts, more: !!body.nextCursor });
-      });
+    fetchPosts(postsUrl).then((body) => {
+      if (stale) return;
+      if ("error" in body) return setError({ ...body.error, at: new Date().toISOString() });
+      setPage(body);
+      send({ type: "posts", posts: body.posts, more: !!body.nextCursor });
+    });
     return () => {
       stale = true;
     };
@@ -120,20 +117,17 @@ export function Blog({ username }: { username: string }) {
     const url = `${postsUrl}&cursor=${encodeURIComponent(cursor)}`;
     if (loading.current === url) return;
     loading.current = url;
-    fetch(url)
-      .then((res) => res.json() as Promise<PostsResponse | ErrorResponse>)
-      .catch((): ErrorResponse => ({ error: { code: "network_error" } }))
-      .then((next) => {
-        if (loading.current !== url) return;
-        if ("error" in next) {
-          loading.current = undefined;
-          return setMoreError({ ...next.error, at: new Date().toISOString() });
-        }
-        const seen = new Set(latest.current.posts.map((post) => post.id));
-        const posts = [...latest.current.posts, ...next.posts.filter((post) => !seen.has(post.id))];
-        setPage((prev) => ({ ...prev!, posts, nextCursor: next.nextCursor }));
-        send({ type: "posts", posts, more: !!next.nextCursor });
-      });
+    fetchPosts(url).then((next) => {
+      if (loading.current !== url) return;
+      if ("error" in next) {
+        loading.current = undefined;
+        return setMoreError({ ...next.error, at: new Date().toISOString() });
+      }
+      const seen = new Set(latest.current.posts.map((post) => post.id));
+      const posts = [...latest.current.posts, ...next.posts.filter((post) => !seen.has(post.id))];
+      setPage((prev) => ({ ...prev!, posts, nextCursor: next.nextCursor }));
+      send({ type: "posts", posts, more: !!next.nextCursor });
+    });
   });
   // The loading indicator at the end of the list is what's watched, so it shows exactly while
   // there's more to load.
@@ -168,20 +162,28 @@ export function Blog({ username }: { username: string }) {
     navigator.mediaSession.metadata = new MediaMetadata({ title, artist, album, artwork: artUrl ? [{ src: artUrl }] : [] });
   }, [current]);
 
-  // Clicking the playing card pauses or resumes it; any other native card starts from the top.
+  // Clicking a native card expands it. The playing card pauses or resumes; any other starts from the top.
   function play(post: AudioPost) {
-    if (post.id !== current?.id || queue.statuses[post.id]?.status !== "ready") return send({ type: "pick", post });
     const player = audio.current!;
     setPlayExpanded(post.id);
+    // iOS lets an audio element that has never played start only inside a tap, and the first track
+    // starts later, once its file check returns. Starting and stopping it here, in the tap, unlocks it.
+    if (!player.src) {
+      player.play().catch(() => {});
+      player.pause();
+    }
+    if (post.id !== current?.id || queue.statuses[post.id]?.status !== "ready") return send({ type: "pick", post });
     if (player.paused) player.play().catch(() => {});
     else player.pause();
   }
 
-  // An embed card plays in its provider's player, so the shared player pauses: two things never play at once.
-  function openEmbed(post: AudioPost) {
-    audio.current!.pause();
-    setPlayExpanded(post.id);
-  }
+  // Two things never play at once: an embed's player appearing, however its card expanded, pauses
+  // the shared player, and the shared player starting collapses every embed card. Stable, so it
+  // runs only when an iframe mounts.
+  const pauseForEmbed = useCallback((iframe: HTMLIFrameElement | null) => {
+    if (iframe) audio.current!.pause();
+  }, []);
+  const [audioStarts, setAudioStarts] = useState(0);
 
   return (
     <>
@@ -210,9 +212,11 @@ export function Blog({ username }: { username: string }) {
                     status={queue.statuses[post.id]}
                     now={queue.now}
                     playExpanded={post.id === playExpanded}
+                    audioStarts={audioStarts}
                     onPlay={() => play(post)}
                     onRetry={() => send({ type: "retry", post })}
-                    onEmbed={() => openEmbed(post)}
+                    onEmbed={() => setPlayExpanded(post.id)}
+                    onEmbedMount={pauseForEmbed}
                     onCollapse={() => setPlayExpanded((id) => (id === post.id ? undefined : id))}
                   />
                 </li>
@@ -233,8 +237,10 @@ export function Blog({ username }: { username: string }) {
             }}
           />
         )}
+        {/* A later page's failure is always the generic one, so it can be tried again. Clearing it
+            shows the loading indicator again, whose observer refetches the page. */}
         {moreError ? (
-          <BlogErrorMessage username={username} error={moreError} onRetry={() => setMoreError(undefined)} />
+          <GenericError error={moreError} onRetry={() => setMoreError(undefined)} />
         ) : (
           cursor && (
             <p ref={end} role="status">
@@ -259,6 +265,11 @@ export function Blog({ username }: { username: string }) {
           ref={audio}
           controls
           controlsList="nodownload"
+          onPlay={() => {
+            setAudioStarts((n) => n + 1);
+            // An embed card a click expanded collapses; the playing card stays expanded.
+            setPlayExpanded((id) => (id === latest.current.current?.id ? id : undefined));
+          }}
           onEnded={() => send({ type: "ended" })}
           onError={() => send({ type: "error" })}
         />
@@ -276,6 +287,10 @@ function BlogErrorMessage({ username, error, onRetry }: { username: string; erro
   if (error.code === "rate_limited") {
     return <p role="alert">Oops! Tumblr is rate-limiting us. Try again in a little bit.</p>;
   }
+  return <GenericError error={error} onRetry={onRetry} />;
+}
+
+function GenericError({ error, onRetry }: { error: BlogError; onRetry: () => void }) {
   const code = error.upstreamStatus ? `${error.code} ${error.upstreamStatus}` : error.code;
   const issueTitle = encodeURIComponent(`Bug report: ${code} ${error.at}`);
   return (
@@ -295,17 +310,36 @@ type CardProps = {
   status?: TrackStatus;
   now?: number;
   playExpanded: boolean;
+  audioStarts: number; // counts the shared player's starts
   onPlay: () => void;
   onRetry: () => void;
   onEmbed: () => void;
+  onEmbedMount: (iframe: HTMLIFrameElement | null) => void;
   onCollapse: () => void;
 };
 
 // Clicking anywhere on a card plays its native track or opens its embed; link cards only expand.
 // The title is a button so keyboard users can do the same: its click bubbles up to the card. The
 // links, the more/less toggle, and Try again stop their clicks from reaching the card.
-function Card({ post, status, now = 0, playExpanded, onPlay, onRetry, onEmbed, onCollapse }: CardProps) {
+function Card({
+  post,
+  status,
+  now = 0,
+  playExpanded,
+  audioStarts,
+  onPlay,
+  onRetry,
+  onEmbed,
+  onEmbedMount,
+  onCollapse,
+}: CardProps) {
   const [moreExpanded, setMoreExpanded] = useState(false);
+  // An embed card opened with "▾ more" collapses too when the shared player starts.
+  const [seenStarts, setSeenStarts] = useState(audioStarts);
+  if (audioStarts !== seenStarts) {
+    setSeenStarts(audioStarts);
+    if (post.track.kind === "embed") setMoreExpanded(false);
+  }
   const expanded = moreExpanded || playExpanded;
   const date = new Date(post.publishedAt * 1000);
   // Memoized: every card re-renders each second while a track's retry counts down.
@@ -376,6 +410,7 @@ function Card({ post, status, now = 0, playExpanded, onPlay, onRetry, onEmbed, o
             allowlist. It only exists while the card is expanded, so collapsing stops its audio. */}
         {expanded && post.track.kind === "embed" && (
           <iframe
+            ref={onEmbedMount}
             className={styles.embed}
             src={post.track.embedUrl}
             title={`${post.title} on ${providerName(post.track.provider)}`}
@@ -409,6 +444,13 @@ function Card({ post, status, now = 0, playExpanded, onPlay, onRetry, onEmbed, o
   );
 }
 
+// A page of posts, or why it failed: a request that never got a response is a network_error.
+function fetchPosts(url: string) {
+  return fetch(url)
+    .then((res) => res.json() as Promise<PostsResponse | ErrorResponse>)
+    .catch((): ErrorResponse => ({ error: { code: "network_error" } }));
+}
+
 // Reads a file's HTTP status with a 2-byte range request, dropping the body once the status
 // arrives. A request that fails outright reads as 0. Only Tumblr's CDN allows this cross-origin.
 function checkFile(url: string) {
@@ -421,7 +463,9 @@ function checkFile(url: string) {
   );
 }
 
-// Providers arrive as Tumblr's lowercase ids ("soundcloud", "tumblr").
+// Providers arrive as Tumblr's lowercase ids ("soundcloud", "tumblr"). Brands spelled other than
+// capitalized are listed.
+const BRANDS: Record<string, string> = { soundcloud: "SoundCloud", youtube: "YouTube" };
 function providerName(provider: string) {
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
+  return BRANDS[provider] ?? provider.charAt(0).toUpperCase() + provider.slice(1);
 }
