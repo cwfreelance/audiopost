@@ -107,10 +107,11 @@ function BlogErrorMessage({ username, error, onRetry }: { username: string; erro
 }
 
 function Card({ post }: { post: AudioPost }) {
+  const [expanded, setExpanded] = useState(false);
   const date = new Date(post.publishedAt * 1000);
   const body = DOMPurify.sanitize(post.bodyHtml, { FORBID_TAGS: ["style"], FORBID_ATTR: ["style"] });
   return (
-    <article className={styles.card}>
+    <article className={expanded ? `${styles.card} ${styles.expanded}` : styles.card}>
       {post.artUrl && <img className={styles.art} src={post.artUrl} alt="" loading="lazy" />}
       <div>
         <h2>
@@ -124,7 +125,10 @@ function Card({ post }: { post: AudioPost }) {
             ↗
           </a>
         </p>
-        <div className={styles.preview} dangerouslySetInnerHTML={{ __html: body }} />
+        <div className={expanded ? undefined : styles.preview} dangerouslySetInnerHTML={{ __html: body }} />
+        <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+          <span aria-hidden="true">{expanded ? "▴" : "▾"}</span> {expanded ? "less" : "more"}
+        </button>
       </div>
     </article>
   );
