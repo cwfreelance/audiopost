@@ -45,6 +45,20 @@
   object-fit: cover;
 }
 
+/* An expanded card's larger art; the text wraps below it on narrow screens. */
+.expanded {
+  flex-wrap: wrap;
+
+  > div {
+    flex: 1 1 15rem;
+  }
+
+  .art {
+    width: 12rem;
+    height: 12rem;
+  }
+}
+
 .meta {
   display: flex;
   flex-wrap: wrap;
