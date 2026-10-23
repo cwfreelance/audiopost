@@ -4,7 +4,7 @@
 
 import DOMPurify from "dompurify";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UsernameForm } from "@/app/username-form";
 import type { AudioPost, ErrorResponse, PostsResponse } from "@/lib/posts";
 import styles from "./blog.module.css";
@@ -30,6 +30,38 @@ export function Blog({ username }: { username: string }) {
       .then(setData, () => setData({ error: { code: "network_error" } }));
   }, [username]);
   const page = data && "blog" in data ? data : undefined;
+
+  // The next page loads when the end of the list nears the viewport. The loading indicator at the
+  // end of the list is what's watched, so it shows exactly while there's more to load.
+  const cursor = page?.nextCursor;
+  const [moreError, setMoreError] = useState<string>();
+  const end = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (!cursor || moreError) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        observer.disconnect();
+        fetch(`/api/blogs/${username}/posts?cursor=${encodeURIComponent(cursor)}`)
+          .then((res) => res.json())
+          .then((next: PostsResponse | ErrorResponse) => {
+            if ("error" in next) return setMoreError(next.error.code);
+            setData((prev) => {
+              const { posts } = prev as PostsResponse;
+              const seen = new Set(posts.map((post) => post.id));
+              return {
+                ...(prev as PostsResponse),
+                posts: [...posts, ...next.posts.filter((post) => !seen.has(post.id))],
+                nextCursor: next.nextCursor,
+              };
+            });
+          }, () => setMoreError("network_error"));
+      },
+      { rootMargin: "1000px" },
+    );
+    observer.observe(end.current!);
+    return () => observer.disconnect();
+  }, [username, cursor, moreError]);
 
   return (
     <>
@@ -60,6 +92,20 @@ export function Blog({ username }: { username: string }) {
               </li>
             ))}
           </ol>
+        )}
+        {moreError ? (
+          <p role="alert">
+            Couldn&apos;t reach Tumblr. Try again. ({moreError}){" "}
+            <button type="button" onClick={() => setMoreError(undefined)}>
+              Try again
+            </button>
+          </p>
+        ) : (
+          cursor && (
+            <p ref={end} role="status">
+              Loading more…
+            </p>
+          )
         )}
       </main>
     </>

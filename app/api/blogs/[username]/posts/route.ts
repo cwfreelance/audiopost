@@ -3,7 +3,7 @@ import { parseUsername } from "@/lib/username";
 
 // The only code that talks to Tumblr, so the API key stays on the server. Never log or return the
 // request URL or a fetch error's message: they can carry the key.
-export async function GET(_request: Request, ctx: RouteContext<"/api/blogs/[username]/posts">) {
+export async function GET(request: Request, ctx: RouteContext<"/api/blogs/[username]/posts">) {
   const username = parseUsername((await ctx.params).username);
   if (!username) return error(400, { code: "invalid_username" });
 
@@ -13,6 +13,9 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/blogs/[user
     reblog_info: "true",
     limit: "20",
   });
+  // The cursor is the next page's `before`.
+  const cursor = new URL(request.url).searchParams.get("cursor");
+  if (cursor) params.set("before", cursor);
   let res: Response | undefined;
   try {
     res = await fetch(`https://api.tumblr.com/v2/blog/${username}.tumblr.com/posts/audio?${params}`, {
@@ -20,6 +23,18 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/blogs/[user
     });
     if (res.ok) {
       const { response } = (await res.json()) as { response: TumblrResponse };
+      // Tumblr's `before` is exclusive, so a page ending partway through a second would skip the
+      // rest of that second (ADR 0001). A full page holds back its last second's posts instead,
+      // and the next page starts with them.
+      let posts = response.posts;
+      let nextCursor: string | null = null;
+      if (posts.length === 20) {
+        const last = posts[19].timestamp;
+        const earlier = posts.filter((post) => post.timestamp !== last);
+        // ponytail: 20 posts from one second can't be held back, so the rest of that second is skipped.
+        if (earlier.length) posts = earlier;
+        nextCursor = String(earlier.length ? last + 1 : last);
+      }
       const body: PostsResponse = {
         blog: {
           username,
@@ -28,10 +43,12 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/blogs/[user
           blogUrl: response.blog.url,
           totalAudioPosts: response.total_posts,
         },
-        posts: response.posts.map(normalizePost),
-        nextCursor: null,
+        posts: posts.map(normalizePost),
+        nextCursor,
       };
-      return Response.json(body, { headers: { "Cache-Control": "s-maxage=300, stale-while-revalidate=3600" } });
+      // A later page's posts are long published, so it can be cached much longer than the first.
+      const cache = cursor ? "s-maxage=86400" : "s-maxage=300, stale-while-revalidate=3600";
+      return Response.json(body, { headers: { "Cache-Control": cache } });
     }
   } catch {
     // A network failure or a body we can't read: reported as upstream_error below.
