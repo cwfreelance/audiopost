@@ -4,10 +4,13 @@
 
 import DOMPurify from "dompurify";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { UsernameForm } from "@/app/username-form";
 import type { AudioPost, ErrorResponse, PostsResponse } from "@/lib/posts";
+import { parseView } from "@/lib/view";
 import styles from "./blog.module.css";
+import { ViewControls } from "./view-controls";
 
 // Post bodies are Tumblr HTML: links open in a new tab. DOMPurify only works in the browser, and
 // cards only render there, after the posts arrive.
@@ -23,12 +26,30 @@ if (DOMPurify.isSupported) {
 // Fetched from the browser, not during server rendering, so repeat lookups come from the edge cache
 // and the smoke test can fake the API.
 export function Blog({ username }: { username: string }) {
+  // The view's filter and sort come from the URL, and its window from the viewer's own timezone.
+  const searchParams = useSearchParams();
+  const view = parseView(`/${username}?${searchParams}`, Intl.DateTimeFormat().resolvedOptions().timeZone)!;
+  const { from, to } = view.window;
+  const query = new URLSearchParams({ sort: view.sort });
+  if (from !== undefined) query.set("from", String(from));
+  if (to !== undefined) query.set("to", String(to));
+  const postsUrl = `/api/blogs/${username}/posts?${query}`;
+
   const [page, setPage] = useState<PostsResponse>();
   const [error, setError] = useState<BlogError>();
+  const [moreError, setMoreError] = useState<BlogError>();
   const [attempt, setAttempt] = useState(0);
+  // A new view starts over from its first page.
+  const [shownUrl, setShownUrl] = useState(postsUrl);
+  if (postsUrl !== shownUrl) {
+    setShownUrl(postsUrl);
+    setPage(undefined);
+    setError(undefined);
+    setMoreError(undefined);
+  }
   useEffect(() => {
     let stale = false;
-    fetch(`/api/blogs/${username}/posts`)
+    fetch(postsUrl)
       .then((res) => res.json() as Promise<PostsResponse | ErrorResponse>)
       .catch((): ErrorResponse => ({ error: { code: "network_error" } }))
       .then((body) => {
@@ -39,23 +60,24 @@ export function Blog({ username }: { username: string }) {
     return () => {
       stale = true;
     };
-  }, [username, attempt]);
+  }, [postsUrl, attempt]);
 
   // The next page loads when the end of the list nears the viewport. The loading indicator at the
   // end of the list is what's watched, so it shows exactly while there's more to load.
   const cursor = page?.nextCursor;
-  const [moreError, setMoreError] = useState<BlogError>();
   const end = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (!cursor || moreError) return;
+    let stale = false;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry.isIntersecting) return;
         observer.disconnect();
-        fetch(`/api/blogs/${username}/posts?cursor=${encodeURIComponent(cursor)}`)
+        fetch(`${postsUrl}&cursor=${encodeURIComponent(cursor)}`)
           .then((res) => res.json() as Promise<PostsResponse | ErrorResponse>)
           .catch((): ErrorResponse => ({ error: { code: "network_error" } }))
           .then((next) => {
+            if (stale) return;
             if ("error" in next) return setMoreError({ ...next.error, at: new Date().toISOString() });
             setPage((prev) => {
               const seen = new Set(prev!.posts.map((post) => post.id));
@@ -67,8 +89,11 @@ export function Blog({ username }: { username: string }) {
       { rootMargin: "1000px" },
     );
     observer.observe(end.current!);
-    return () => observer.disconnect();
-  }, [username, cursor, moreError]);
+    return () => {
+      stale = true;
+      observer.disconnect();
+    };
+  }, [postsUrl, cursor, moreError]);
 
   return (
     <>
@@ -79,12 +104,14 @@ export function Blog({ username }: { username: string }) {
         {page && (
           <>
             <a href={page.blog.blogUrl}>@{username}</a>
-            <span>{page.blog.totalAudioPosts} audio posts</span>
+            {/* Tumblr doesn't report filtered counts. */}
+            {!view.filter && <span>{page.blog.totalAudioPosts} audio posts</span>}
           </>
         )}
         <UsernameForm />
       </header>
       <main>
+        <ViewControls view={view} />
         {page &&
           (page.posts.length ? (
             <ol className={styles.cards}>
@@ -94,6 +121,8 @@ export function Blog({ username }: { username: string }) {
                 </li>
               ))}
             </ol>
+          ) : view.filter ? (
+            <p>No results found. Try changing or removing the filter.</p>
           ) : (
             <p>Sorry, @{username} hasn&apos;t posted any audio.</p>
           ))}

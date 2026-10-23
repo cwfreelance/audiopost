@@ -13,9 +13,19 @@ export async function GET(request: Request, ctx: RouteContext<"/api/blogs/[usern
     reblog_info: "true",
     limit: "20",
   });
-  // The cursor is the next page's `before`.
-  const cursor = new URL(request.url).searchParams.get("cursor");
-  if (cursor) params.set("before", cursor);
+  const query = new URL(request.url).searchParams;
+  const oldest = query.get("sort") === "oldest";
+  // Unix seconds; anything else is ignored, like a missing parameter.
+  const [from, to, cursor] = ["from", "to", "cursor"].map((name) => {
+    const value = query.get(name) ?? "";
+    return /^\d{1,10}$/.test(value) ? Number(value) : undefined;
+  });
+  if (oldest) params.set("sort", "asc");
+  // The cursor is the next page's `before`, or oldest first, its `after`. The first page starts at
+  // the window's edge: `before=to`, or `after=from-1`, since `after` is exclusive (ADR 0001).
+  if (cursor !== undefined) params.set(oldest ? "after" : "before", String(cursor));
+  else if (oldest && from !== undefined) params.set("after", String(from - 1));
+  else if (!oldest && to !== undefined) params.set("before", String(to));
   let res: Response | undefined;
   try {
     res = await fetch(`https://api.tumblr.com/v2/blog/${username}.tumblr.com/posts/audio?${params}`, {
@@ -23,17 +33,21 @@ export async function GET(request: Request, ctx: RouteContext<"/api/blogs/[usern
     });
     if (res.ok) {
       const { response } = (await res.json()) as { response: TumblrResponse };
-      // Tumblr's `before` is exclusive, so a page ending partway through a second would skip the
-      // rest of that second (ADR 0001). A full page holds back its last second's posts instead,
-      // and the next page starts with them.
-      let posts = response.posts;
+      // Tumblr's `before` and `after` are exclusive, so a page ending partway through a second would
+      // skip the rest of that second (ADR 0001). A full page holds back its last second's posts
+      // instead, and the next page starts with them, one second past that second. A page that
+      // crossed the window's far edge comes back short once trimmed, so it holds nothing back and
+      // ends the window.
+      let posts = response.posts.filter(
+        (post) => post.timestamp >= (from ?? -Infinity) && post.timestamp < (to ?? Infinity),
+      );
       let nextCursor: string | null = null;
       if (posts.length === 20) {
         const last = posts[19].timestamp;
         const earlier = posts.filter((post) => post.timestamp !== last);
         // ponytail: 20 posts from one second can't be held back, so the rest of that second is skipped.
         if (earlier.length) posts = earlier;
-        nextCursor = String(earlier.length ? last + 1 : last);
+        nextCursor = String(earlier.length ? last + (oldest ? -1 : 1) : last);
       }
       const body: PostsResponse = {
         blog: {
@@ -47,7 +61,7 @@ export async function GET(request: Request, ctx: RouteContext<"/api/blogs/[usern
         nextCursor,
       };
       // A later page's posts are long published, so it can be cached much longer than the first.
-      const cache = cursor ? "s-maxage=86400" : "s-maxage=300, stale-while-revalidate=3600";
+      const cache = cursor !== undefined ? "s-maxage=86400" : "s-maxage=300, stale-while-revalidate=3600";
       return Response.json(body, { headers: { "Cache-Control": cache } });
     }
     if (res.status === 429) return error(429, { code: "rate_limited" });
