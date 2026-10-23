@@ -47,6 +47,35 @@ export function Blog({ username }: { username: string }) {
     };
   }, [username, attempt]);
 
+  // The next page loads when the end of the list nears the viewport. The loading indicator at the
+  // end of the list is what's watched, so it shows exactly while there's more to load.
+  const cursor = page?.nextCursor;
+  const [moreError, setMoreError] = useState<BlogError>();
+  const end = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (!cursor || moreError) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        observer.disconnect();
+        fetch(`/api/blogs/${username}/posts?cursor=${encodeURIComponent(cursor)}`)
+          .then((res) => res.json() as Promise<PostsResponse | ErrorResponse>)
+          .catch((): ErrorResponse => ({ error: { code: "network_error" } }))
+          .then((next) => {
+            if ("error" in next) return setMoreError({ ...next.error, at: new Date().toISOString() });
+            setPage((prev) => {
+              const seen = new Set(prev!.posts.map((post) => post.id));
+              const posts = [...prev!.posts, ...next.posts.filter((post) => !seen.has(post.id))];
+              return { ...prev!, posts, nextCursor: next.nextCursor };
+            });
+          });
+      },
+      { rootMargin: "1000px" },
+    );
+    observer.observe(end.current!);
+    return () => observer.disconnect();
+  }, [username, cursor, moreError]);
+
   // Clicking the playing card pauses or resumes it; any other native card starts from the top.
   // play() runs inside the click, which is what lets browsers start audio.
   function play(post: AudioPost, fileUrl: string) {
@@ -102,6 +131,15 @@ export function Blog({ username }: { username: string }) {
               setAttempt((n) => n + 1);
             }}
           />
+        )}
+        {moreError ? (
+          <BlogErrorMessage username={username} error={moreError} onRetry={() => setMoreError(undefined)} />
+        ) : (
+          cursor && (
+            <p ref={end} role="status">
+              Loading more…
+            </p>
+          )
         )}
       </main>
       <section className={styles.bar} aria-label="Now playing" hidden={!current}>

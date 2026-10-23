@@ -19,11 +19,32 @@ function fakeTumblr(fixture: Fixture) {
   vi.stubGlobal("fetch", tumblr);
 }
 
-async function getPosts(username: string) {
-  const res = await GET(new Request(`http://localhost/api/blogs/${username}/posts`), {
+// The blog's 40 newest posts, from two consecutive recorded pages.
+const recorded = [...mainNewest.body.response.posts, ...mainNewest2.body.response.posts];
+
+// Tumblr's newest-first paging over the recorded posts: up to 20 published strictly before `before`.
+function fakeTumblrPaging(posts: { timestamp: number }[] = recorded) {
+  tumblr = vi.fn(async (url: string) => {
+    const before = Number(new URL(url).searchParams.get("before") ?? Infinity);
+    const page = posts.filter((post) => post.timestamp < before).slice(0, 20);
+    return Response.json({ response: { ...mainNewest.body.response, posts: page } });
+  });
+  vi.stubGlobal("fetch", tumblr);
+}
+
+async function getPosts(username: string, cursor?: string) {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+  const res = await GET(new Request(`http://localhost/api/blogs/${username}/posts${query}`), {
     params: Promise.resolve({ username }),
   });
   return { res, text: await res.clone().text(), body: await res.json() };
+}
+
+// The ids of the first two pages, fetched the way the page does: the second with the first's cursor.
+async function getTwoPages() {
+  const first = await getPosts("blog-1");
+  const second = await getPosts("blog-1", first.body.nextCursor);
+  return [...first.body.posts, ...second.body.posts].map((post: { id: string }) => post.id);
 }
 
 async function getPost(username: string, id: string) {
@@ -39,7 +60,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-test("returns the blog and its 20 newest audio posts, newest first", async () => {
+test("returns the blog and its newest audio posts, newest first", async () => {
   const fixture = structuredClone(mainNewest);
   // The recorded fixtures drop the blog's title and avatar (privacy), so add them back here.
   Object.assign(fixture.body.response.blog, {
@@ -62,10 +83,10 @@ test("returns the blog and its 20 newest audio posts, newest first", async () =>
     blogUrl: "https://blog-1.tumblr.com/",
     totalAudioPosts: 466,
   });
-  expect(body.posts).toHaveLength(20);
+  // Tumblr's 20 minus the last, whose second is held back for the next page.
+  expect(body.posts).toHaveLength(19);
   expect(body.posts[0].id).toBe("10000000001");
-  expect(body.posts[19].id).toBe("10000000021");
-  expect(body.nextCursor).toBeNull();
+  expect(body.posts[18].id).toBe("10000000020");
 });
 
 test("asks Tumblr for 20 NPF audio posts with the API key and the app's User-Agent", async () => {
@@ -94,6 +115,52 @@ test("a successful response is cached at the edge", async () => {
   const { res } = await getPosts("blog-1");
 
   expect(res.headers.get("Cache-Control")).toBe("s-maxage=300, stale-while-revalidate=3600");
+});
+
+test("the next page picks up where the last ended, with no post skipped or repeated", async () => {
+  fakeTumblrPaging();
+
+  // Each full page holds back its last second for the next, so two pages are the 38 newest posts.
+  expect(await getTwoPages()).toEqual(recorded.slice(0, 38).map((post) => post.id_string));
+});
+
+test("posts sharing a second across a page boundary all appear, once", async () => {
+  const posts = structuredClone(recorded);
+  // The first recorded page's last two posts and the second's first, published in the same second.
+  posts[18].timestamp = posts[20].timestamp = 1340653536;
+  fakeTumblrPaging(posts);
+
+  expect(await getTwoPages()).toEqual(posts.slice(0, 37).map((post) => post.id_string));
+});
+
+test("a full page from a single second is returned whole, and the next page moves past that second", async () => {
+  const posts = structuredClone(recorded);
+  for (const post of posts.slice(0, 20)) post.timestamp = 1340653536;
+  fakeTumblrPaging(posts);
+
+  expect(await getTwoPages()).toEqual(posts.slice(0, 39).map((post) => post.id_string));
+});
+
+test("a short page from Tumblr is the last page", async () => {
+  fakeTumblr(secondaryNewest);
+
+  const { body } = await getPosts("blog-2");
+
+  expect(body.posts.map((post: { id: string }) => post.id)).toEqual([
+    "100000000000000082",
+    "100000000000000083",
+    "10000085",
+  ]);
+  expect(body.nextCursor).toBeNull();
+});
+
+test("a later page, fetched with a cursor, is cached at the edge for a day", async () => {
+  fakeTumblrPaging();
+  const { body } = await getPosts("blog-1");
+
+  const { res } = await getPosts("blog-1", body.nextCursor);
+
+  expect(res.headers.get("Cache-Control")).toBe("s-maxage=86400");
 });
 
 test.each(["bad_name", "no!", "a".repeat(33), "blog.tumblr.com", "@blog-1"])(
