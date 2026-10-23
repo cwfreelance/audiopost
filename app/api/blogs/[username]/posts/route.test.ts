@@ -444,3 +444,14 @@ test("an embed whose host isn't SoundCloud, Spotify, or Bandcamp becomes a link 
     url: "https://open.spotify.com/track/1h0R5cstHZ070tevUAfEo7",
   });
 });
+
+test("an embed URL that isn't https becomes a link track", async () => {
+  const fixture = structuredClone(secondaryNewest);
+  const bandcamp = fixture.body.response.posts[1].content[0] as { embed_url: string };
+  bandcamp.embed_url = "http://bandcamp.com/EmbeddedPlayer/size=medium/track=1000000084/";
+  fakeTumblr(fixture);
+
+  const post = await getPost("blog-2", "100000000000000083");
+
+  expect(post.track).toEqual({ kind: "link", provider: "bandcamp", url: "https://blog-1.bandcamp.com/track/track-23" });
+});

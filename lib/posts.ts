@@ -25,7 +25,13 @@ export type PostsResponse = {
   nextCursor: string | null;
 };
 
-export type ErrorResponse = { error: { code: string; upstreamStatus?: number } };
+// network_error is the page's own, for a request that never got a response.
+export type ErrorResponse = {
+  error: {
+    code: "invalid_username" | "blog_not_found" | "blog_private" | "rate_limited" | "upstream_error" | "network_error";
+    upstreamStatus?: number;
+  };
+};
 
 // The NPF fields the normalizer reads.
 type Block = {
@@ -75,7 +81,7 @@ export function normalizePost(post: TumblrPost): AudioPost {
   };
 }
 
-// Embeds are allowed only from these domains (or their subdomains), keyed to the provider name.
+// Embeds are allowed only over https from these domains (or their subdomains), keyed to the provider name.
 const EMBED_DOMAINS: Record<string, string> = {
   "soundcloud.com": "soundcloud",
   "spotify.com": "spotify",
@@ -86,7 +92,8 @@ function track(audio: Block, postUrl: string): Track {
   // Check embeds before media: Bandcamp and SoundCloud blocks also carry a media URL. Tumblr
   // HTML-escapes embed_url's query string.
   const embedUrl = audio.embed_url?.replaceAll("&amp;", "&");
-  const host = URL.parse(embedUrl ?? "")?.hostname ?? "";
+  const parsed = URL.parse(embedUrl ?? "");
+  const host = parsed?.protocol === "https:" ? parsed.hostname : "";
   const domain = Object.keys(EMBED_DOMAINS).find((d) => host === d || host.endsWith(`.${d}`));
   if (embedUrl && domain) return { kind: "embed", provider: EMBED_DOMAINS[domain], embedUrl };
   // Files on other hosts are provider "tumblr" too.
