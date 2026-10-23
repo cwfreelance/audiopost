@@ -4,11 +4,14 @@
 
 import DOMPurify from "dompurify";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { UsernameForm } from "@/app/username-form";
 import { playQueue, type PlayQueue, type QueueEvent } from "@/lib/play-queue";
 import type { AudioPost, ErrorResponse, PostsResponse } from "@/lib/posts";
+import { parseView } from "@/lib/view";
 import styles from "./blog.module.css";
+import { ViewControls } from "./view-controls";
 
 // Post bodies are Tumblr HTML: links open in a new tab. DOMPurify only works in the browser, and
 // cards only render there, after the posts arrive.
@@ -24,9 +27,27 @@ if (DOMPurify.isSupported) {
 // Fetched from the browser, not during server rendering, so repeat lookups come from the edge cache
 // and the smoke test can fake the API.
 export function Blog({ username }: { username: string }) {
+  // The view's filter and sort come from the URL, and its window from the viewer's own timezone.
+  const searchParams = useSearchParams();
+  const view = parseView(`/${username}?${searchParams}`, Intl.DateTimeFormat().resolvedOptions().timeZone)!;
+  const { from, to } = view.window;
+  const query = new URLSearchParams({ sort: view.sort });
+  if (from !== undefined) query.set("from", String(from));
+  if (to !== undefined) query.set("to", String(to));
+  const postsUrl = `/api/blogs/${username}/posts?${query}`;
+
   const [page, setPage] = useState<PostsResponse>();
   const [error, setError] = useState<BlogError>();
+  const [moreError, setMoreError] = useState<BlogError>();
   const [attempt, setAttempt] = useState(0);
+  // A new view starts over from its first page.
+  const [shownUrl, setShownUrl] = useState(postsUrl);
+  if (postsUrl !== shownUrl) {
+    setShownUrl(postsUrl);
+    setPage(undefined);
+    setError(undefined);
+    setMoreError(undefined);
+  }
   // The one shared player: its source changes per track, because iOS only lets an audio element
   // that already exists start the next track with the screen locked.
   const audio = useRef<HTMLAudioElement>(null);
@@ -55,7 +76,7 @@ export function Blog({ username }: { username: string }) {
 
   useEffect(() => {
     let stale = false;
-    fetch(`/api/blogs/${username}/posts`)
+    fetch(postsUrl)
       .then((res) => res.json() as Promise<PostsResponse | ErrorResponse>)
       .catch((): ErrorResponse => ({ error: { code: "network_error" } }))
       .then((body) => {
@@ -67,20 +88,28 @@ export function Blog({ username }: { username: string }) {
     return () => {
       stale = true;
     };
-  }, [username, attempt, send]);
+  }, [postsUrl, attempt, send]);
 
   // Loads the next page, once per cursor: both the end of the list nearing the viewport and the
-  // play queue running low ask for it.
+  // play queue running low ask for it. A new view drops a page still loading for the old one.
   const cursor = page?.nextCursor;
-  const [moreError, setMoreError] = useState<BlogError>();
   const loading = useRef<string>(undefined);
+  useEffect(
+    () => () => {
+      loading.current = undefined;
+    },
+    [postsUrl],
+  );
   const loadMore = useEffectEvent(() => {
-    if (!cursor || moreError || loading.current === cursor) return;
-    loading.current = cursor;
-    fetch(`/api/blogs/${username}/posts?cursor=${encodeURIComponent(cursor)}`)
+    if (!cursor || moreError) return;
+    const url = `${postsUrl}&cursor=${encodeURIComponent(cursor)}`;
+    if (loading.current === url) return;
+    loading.current = url;
+    fetch(url)
       .then((res) => res.json() as Promise<PostsResponse | ErrorResponse>)
       .catch((): ErrorResponse => ({ error: { code: "network_error" } }))
       .then((next) => {
+        if (loading.current !== url) return;
         if ("error" in next) {
           loading.current = undefined;
           return setMoreError({ ...next.error, at: new Date().toISOString() });
@@ -133,6 +162,12 @@ export function Blog({ username }: { username: string }) {
     else player.pause();
   }
 
+  // An embed card plays in its provider's player, so the shared player pauses: two things never play at once.
+  function openEmbed(post: AudioPost) {
+    audio.current!.pause();
+    setPlayExpanded(post.id);
+  }
+
   return (
     <>
       <header className={styles.header}>
@@ -142,12 +177,14 @@ export function Blog({ username }: { username: string }) {
         {page && (
           <>
             <a href={page.blog.blogUrl}>@{username}</a>
-            <span>{page.blog.totalAudioPosts} audio posts</span>
+            {/* Tumblr doesn't report filtered counts. */}
+            {!view.filter && <span>{page.blog.totalAudioPosts} audio posts</span>}
           </>
         )}
         <UsernameForm />
       </header>
       <main>
+        <ViewControls view={view} />
         {page &&
           (page.posts.length ? (
             <ol className={styles.cards}>
@@ -157,11 +194,14 @@ export function Blog({ username }: { username: string }) {
                     post={post}
                     playExpanded={post.id === playExpanded}
                     onPlay={() => play(post)}
+                    onEmbed={() => openEmbed(post)}
                     onCollapse={() => setPlayExpanded((id) => (id === post.id ? undefined : id))}
                   />
                 </li>
               ))}
             </ol>
+          ) : view.filter ? (
+            <p>No results found. Try changing or removing the filter.</p>
           ) : (
             <p>Sorry, @{username} hasn&apos;t posted any audio.</p>
           ))}
@@ -226,12 +266,18 @@ function BlogErrorMessage({ username, error, onRetry }: { username: string; erro
   );
 }
 
-type CardProps = { post: AudioPost; playExpanded: boolean; onPlay: () => void; onCollapse: () => void };
+type CardProps = {
+  post: AudioPost;
+  playExpanded: boolean;
+  onPlay: () => void;
+  onEmbed: () => void;
+  onCollapse: () => void;
+};
 
-// Clicking anywhere on a card plays its native track; embed and link cards only expand for now.
+// Clicking anywhere on a card plays its native track or opens its embed; link cards only expand.
 // The title is a button so keyboard users can do the same: its click bubbles up to the card. The
-// ↗ link, links in the post, and the more/less toggle stop their clicks from reaching the card.
-function Card({ post, playExpanded, onPlay, onCollapse }: CardProps) {
+// links and the more/less toggle stop their clicks from reaching the card.
+function Card({ post, playExpanded, onPlay, onEmbed, onCollapse }: CardProps) {
   const [moreExpanded, setMoreExpanded] = useState(false);
   const expanded = moreExpanded || playExpanded;
   const date = new Date(post.publishedAt * 1000);
@@ -239,7 +285,11 @@ function Card({ post, playExpanded, onPlay, onCollapse }: CardProps) {
   return (
     <article
       className={expanded ? `${styles.card} ${styles.expanded}` : styles.card}
-      onClick={() => (post.track.kind === "native" ? onPlay() : setMoreExpanded(true))}
+      onClick={() => {
+        if (post.track.kind === "native") onPlay();
+        else if (post.track.kind === "embed") onEmbed();
+        else setMoreExpanded(true);
+      }}
     >
       {post.artUrl && <img className={styles.art} src={post.artUrl} alt="" loading="lazy" />}
       <div>
@@ -262,6 +312,22 @@ function Card({ post, playExpanded, onPlay, onCollapse }: CardProps) {
             ↗
           </a>
         </p>
+        {/* The app's own iframe, from the embed URL the posts API checked against the provider
+            allowlist. It only exists while the card is expanded, so collapsing stops its audio. */}
+        {expanded && post.track.kind === "embed" && (
+          <iframe
+            className={styles.embed}
+            src={post.track.embedUrl}
+            title={`${post.title} on ${providerName(post.track.provider)}`}
+            sandbox="allow-scripts allow-same-origin allow-popups"
+            allow="autoplay; encrypted-media"
+          />
+        )}
+        {post.track.kind === "link" && (
+          <a href={post.track.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+            Listen on {providerName(post.track.provider)} ↗
+          </a>
+        )}
         <div
           className={expanded ? undefined : styles.preview}
           onClick={(e) => (e.target as Element).closest("a") && e.stopPropagation()}
@@ -281,4 +347,9 @@ function Card({ post, playExpanded, onPlay, onCollapse }: CardProps) {
       </div>
     </article>
   );
+}
+
+// Providers arrive as Tumblr's lowercase ids ("soundcloud", "tumblr").
+function providerName(provider: string) {
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
 }

@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import mainNewest from "@/fixtures/tumblr/main-newest-1.json";
 import mainNewest2 from "@/fixtures/tumblr/main-newest-2.json";
+import mainOldest from "@/fixtures/tumblr/main-oldest-1.json";
 import mainOldest2 from "@/fixtures/tumblr/main-oldest-2.json";
 import notFound from "@/fixtures/tumblr/not-found.json";
 import privateBlog from "@/fixtures/tumblr/private.json";
@@ -19,32 +20,39 @@ function fakeTumblr(fixture: Fixture) {
   vi.stubGlobal("fetch", tumblr);
 }
 
-// The blog's 40 newest posts, from two consecutive recorded pages.
+// The blog's 40 newest posts, from two consecutive recorded pages, newest first.
 const recorded = [...mainNewest.body.response.posts, ...mainNewest2.body.response.posts];
+// The blog's 40 oldest posts, from two consecutive recorded pages, oldest first.
+const recordedOldest = [...mainOldest.body.response.posts, ...mainOldest2.body.response.posts];
 
-// Tumblr's newest-first paging over the recorded posts: up to 20 published strictly before `before`.
-function fakeTumblrPaging(posts: { timestamp: number }[] = recorded) {
+// Tumblr's paging over the recorded posts (given newest first): up to 20 published strictly between
+// `after` and `before`, oldest first with `sort=asc`, else newest first.
+function fakeTumblrPaging(posts: { timestamp: number }[] = [...recorded, ...recordedOldest.toReversed()]) {
   tumblr = vi.fn(async (url: string) => {
-    const before = Number(new URL(url).searchParams.get("before") ?? Infinity);
-    const page = posts.filter((post) => post.timestamp < before).slice(0, 20);
+    const params = new URL(url).searchParams;
+    const before = Number(params.get("before") ?? Infinity);
+    const after = Number(params.get("after") ?? -Infinity);
+    const sorted = params.get("sort") === "asc" ? posts.toReversed() : posts;
+    const page = sorted.filter((post) => post.timestamp < before && post.timestamp > after).slice(0, 20);
     return Response.json({ response: { ...mainNewest.body.response, posts: page } });
   });
   vi.stubGlobal("fetch", tumblr);
 }
 
-async function getPosts(username: string, cursor?: string) {
-  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
-  const res = await GET(new Request(`http://localhost/api/blogs/${username}/posts${query}`), {
+async function getPosts(username: string, query: Record<string, string> = {}) {
+  const res = await GET(new Request(`http://localhost/api/blogs/${username}/posts?${new URLSearchParams(query)}`), {
     params: Promise.resolve({ username }),
   });
   return { res, text: await res.clone().text(), body: await res.json() };
 }
 
-// The ids of the first two pages, fetched the way the page does: the second with the first's cursor.
-async function getTwoPages() {
-  const first = await getPosts("blog-1");
-  const second = await getPosts("blog-1", first.body.nextCursor);
-  return [...first.body.posts, ...second.body.posts].map((post: { id: string }) => post.id);
+// The first two pages, fetched the way the page does (the second with the first's cursor): their
+// post ids, and the cursor the second ends with.
+async function getTwoPages(query: Record<string, string> = {}) {
+  const first = await getPosts("blog-1", query);
+  const second = await getPosts("blog-1", { ...query, cursor: first.body.nextCursor });
+  const ids = [...first.body.posts, ...second.body.posts].map((post: { id: string }) => post.id);
+  return { ids, nextCursor: second.body.nextCursor };
 }
 
 async function getPost(username: string, id: string) {
@@ -109,6 +117,26 @@ test("asks Tumblr for 20 NPF audio posts with the API key and the app's User-Age
   );
 });
 
+test("a junk sort, window, or cursor is ignored, never passed on to Tumblr", async () => {
+  fakeTumblr(mainNewest);
+
+  const { res, body } = await getPosts("blog-1", {
+    sort: "sideways",
+    from: "1e9",
+    to: "-5",
+    cursor: "1340653536&api_key=other",
+  });
+
+  expect(body.posts).toHaveLength(19);
+  expect(Object.fromEntries(new URL(tumblr.mock.calls[0][0]).searchParams)).toEqual({
+    api_key: API_KEY,
+    npf: "true",
+    reblog_info: "true",
+    limit: "20",
+  });
+  expect(res.headers.get("Cache-Control")).toBe("s-maxage=300, stale-while-revalidate=3600");
+});
+
 test("a successful response is cached at the edge", async () => {
   fakeTumblr(mainNewest);
 
@@ -121,7 +149,7 @@ test("the next page picks up where the last ended, with no post skipped or repea
   fakeTumblrPaging();
 
   // Each full page holds back its last second for the next, so two pages are the 38 newest posts.
-  expect(await getTwoPages()).toEqual(recorded.slice(0, 38).map((post) => post.id_string));
+  expect((await getTwoPages()).ids).toEqual(recorded.slice(0, 38).map((post) => post.id_string));
 });
 
 test("posts sharing a second across a page boundary all appear, once", async () => {
@@ -130,7 +158,7 @@ test("posts sharing a second across a page boundary all appear, once", async () 
   posts[18].timestamp = posts[20].timestamp = 1340653536;
   fakeTumblrPaging(posts);
 
-  expect(await getTwoPages()).toEqual(posts.slice(0, 37).map((post) => post.id_string));
+  expect((await getTwoPages()).ids).toEqual(posts.slice(0, 37).map((post) => post.id_string));
 });
 
 test("a full page from a single second is returned whole, and the next page moves past that second", async () => {
@@ -138,7 +166,35 @@ test("a full page from a single second is returned whole, and the next page move
   for (const post of posts.slice(0, 20)) post.timestamp = 1340653536;
   fakeTumblrPaging(posts);
 
-  expect(await getTwoPages()).toEqual(posts.slice(0, 39).map((post) => post.id_string));
+  expect((await getTwoPages()).ids).toEqual(posts.slice(0, 39).map((post) => post.id_string));
+});
+
+test("oldest first pages forward from the blog's first post, with no post skipped or repeated", async () => {
+  fakeTumblrPaging();
+
+  // Each full page holds back its last second for the next, so two pages are the 38 oldest posts.
+  expect((await getTwoPages({ sort: "oldest" })).ids).toEqual(recordedOldest.slice(0, 38).map((post) => post.id_string));
+});
+
+// A window is [from, to): a post published at `from` is in it, one published at `to` is not.
+test("newest first returns the window's posts from just before `to` down to `from`, then ends", async () => {
+  fakeTumblrPaging();
+  const window = { from: String(recorded[29].timestamp), to: String(recorded[2].timestamp) };
+
+  const { ids, nextCursor } = await getTwoPages(window);
+
+  expect(ids).toEqual(recorded.slice(3, 30).map((post) => post.id_string));
+  expect(nextCursor).toBeNull();
+});
+
+test("oldest first returns the window's posts from `from` up to just before `to`, then ends", async () => {
+  fakeTumblrPaging();
+  const window = { from: String(recordedOldest[2].timestamp), to: String(recordedOldest[29].timestamp) };
+
+  const { ids, nextCursor } = await getTwoPages({ sort: "oldest", ...window });
+
+  expect(ids).toEqual(recordedOldest.slice(2, 29).map((post) => post.id_string));
+  expect(nextCursor).toBeNull();
 });
 
 test("a short page from Tumblr is the last page", async () => {
@@ -158,7 +214,7 @@ test("a later page, fetched with a cursor, is cached at the edge for a day", asy
   fakeTumblrPaging();
   const { body } = await getPosts("blog-1");
 
-  const { res } = await getPosts("blog-1", body.nextCursor);
+  const { res } = await getPosts("blog-1", { cursor: body.nextCursor });
 
   expect(res.headers.get("Cache-Control")).toBe("s-maxage=86400");
 });
