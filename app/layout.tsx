@@ -1,5 +1,22 @@
 import type { Metadata } from "next";
+import { Atkinson_Hyperlegible_Next } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
+
+// Londrina Solid is the wordmark's face, used for titles; Atkinson Hyperlegible Next sets everything else.
+const display = localFont({
+  src: [
+    { path: "../assets/logo/fonts/LondrinaSolid-Light.woff2", weight: "300" },
+    { path: "../assets/logo/fonts/LondrinaSolid-Regular.woff2", weight: "400" },
+  ],
+  variable: "--font-display",
+});
+// Next has no fallback metrics for this family, so it skips building a size-adjusted fallback.
+const text = Atkinson_Hyperlegible_Next({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-text",
+  adjustFontFallback: false,
+});
 
 export const metadata: Metadata = {
   title: "audiopost",
@@ -8,7 +25,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${display.variable} ${text.variable}`}>
       <body>
         {children}
         <footer>

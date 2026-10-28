@@ -1,19 +1,122 @@
+/* The brand's own three colors (stamp pink, #f0f0f0 paper, black ink) plus the few tones the app
+   needs around them. Each pair is light mode, then dark mode. */
 :root {
   color-scheme: light dark;
-  font-family: system-ui, sans-serif;
+  --paper: light-dark(#f0f0f0, #000000);
+  --ink: light-dark(#000000, #f0f0f0);
+  --stamp: #d6336c;
+  --on-stamp: #ffffff;
+  /* Pink that passes contrast as small text on --paper. */
+  --stamp-text: light-dark(#b8285b, #ec6393);
+  --muted: light-dark(#555555, #a3a3a3);
+  --surface: light-dark(#ffffff, #1a1a1a);
+  --rule: light-dark(#d4d4d4, #333333);
+  /* The paper an art stamp is printed on, before it plays. */
+  --stamp-paper: light-dark(#ffffff, #2b2b2b);
+
+  --display: var(--font-display), "Londrina Solid", sans-serif;
+  --text: var(--font-text), system-ui, sans-serif;
+
+  font-family: var(--text);
+  font-size: 100%;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  accent-color: var(--stamp);
 }
 
 body {
   box-sizing: border-box;
+  max-width: 48rem;
   min-height: 100dvh;
-  margin: 0;
-  padding: 1rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 0;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.5rem;
 
   > footer {
     margin-top: auto;
+    padding: 1.5rem 0;
+    border-top: 1px solid var(--rule);
+    color: var(--muted);
     font-size: 0.875rem;
+
+    > p {
+      max-width: 34rem;
+      margin: 0 0 0.25rem;
+    }
+  }
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--stamp);
+  text-decoration-thickness: 0.1em;
+  text-underline-offset: 0.2em;
+
+  &:hover {
+    color: var(--stamp-text);
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--stamp);
+  outline-offset: 2px;
+}
+
+input,
+select,
+button {
+  font: inherit;
+  color: inherit;
+}
+
+input,
+select {
+  box-sizing: border-box;
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  border: 2px solid var(--ink);
+  border-radius: 0.375rem;
+  background: var(--surface);
+
+  &:disabled {
+    border-color: var(--rule);
+    color: var(--muted);
+  }
+
+  &[aria-invalid="true"] {
+    border-color: var(--stamp);
+  }
+}
+
+input::placeholder {
+  color: var(--muted);
+}
+
+/* Primary actions wear the stamp. */
+button[type="submit"] {
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
+  border: 0;
+  border-radius: 0.375rem;
+  background: var(--stamp);
+  color: var(--on-stamp);
+  font-family: var(--display);
+  font-size: 1.3125rem;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in oklab, var(--stamp), #000 15%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }
