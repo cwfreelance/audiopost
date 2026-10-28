@@ -1,0 +1,66 @@
+/* audiopost brand: font, colors and wordmark styles.
+   Paths assume this file sits next to the fonts/ folder. */
+
+@font-face {
+  font-family: 'Londrina Solid';
+  font-style: normal;
+  font-weight: 100;
+  font-display: swap;
+  src: url('fonts/LondrinaSolid-Thin.woff2') format('woff2'),
+       url('fonts/LondrinaSolid-Thin.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Londrina Solid';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('fonts/LondrinaSolid-Light.woff2') format('woff2'),
+       url('fonts/LondrinaSolid-Light.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Londrina Solid';
+  font-style: normal;
+  font-weight: 400; /* the logo uses this one */
+  font-display: swap;
+  src: url('fonts/LondrinaSolid-Regular.woff2') format('woff2'),
+       url('fonts/LondrinaSolid-Regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Londrina Solid';
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url('fonts/LondrinaSolid-Black.woff2') format('woff2'),
+       url('fonts/LondrinaSolid-Black.ttf') format('truetype');
+}
+
+:root {
+  --ap-stamp: #d6336c;          /* stamp (pink) */
+  --ap-mark: #f0f0f0;           /* level-meter bars inside the stamp */
+  --ap-light-bg: #f0f0f0;       /* light background */
+  --ap-audio-on-light: #000000; /* "AUDIO" on light */
+  --ap-post-on-light: #d6336c;  /* "POST" on light */
+  --ap-dark-bg: #000000;        /* dark background */
+  --ap-audio-on-dark: #f0f0f0;  /* "AUDIO" on dark */
+  --ap-post-on-dark: #d6336c;   /* "POST" on dark */
+  --ap-tile-bg: #d6336c;        /* app-icon tile */
+  --ap-tile-stamp: #f0f0f0;     /* stamp on the app-icon tile */
+  --ap-tile-mark: #d6336c;      /* meter bars on the app-icon tile */
+}
+
+/* Live-text wordmark, if you ever need it as text instead of the SVG.
+   Markup: <span class="ap-wordmark"><span class="ap-audio">audio</span><span class="ap-post">post</span></span>
+   Keep the two spans touching (no whitespace) so the letter spacing matches the logo. */
+.ap-wordmark {
+  font-family: 'Londrina Solid', sans-serif;
+  font-weight: 400;
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  line-height: 1;
+  white-space: nowrap;
+}
+.ap-wordmark .ap-audio { color: var(--ap-audio-on-light); }
+.ap-wordmark .ap-post  { color: var(--ap-post-on-light); }
+.ap-on-dark .ap-wordmark .ap-audio { color: var(--ap-audio-on-dark); }
+.ap-on-dark .ap-wordmark .ap-post  { color: var(--ap-post-on-dark); }
