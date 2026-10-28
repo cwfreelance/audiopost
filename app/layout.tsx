@@ -1,31 +1,27 @@
 import type { Metadata } from "next";
-import { Atkinson_Hyperlegible_Next } from "next/font/google";
+import { SN_Pro, Special_Elite } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
 
-// Londrina Solid is the wordmark's face, used for titles; Atkinson Hyperlegible Next sets everything else.
-const display = localFont({
-  src: [
-    { path: "../assets/logo/fonts/LondrinaSolid-Light.woff2", weight: "300" },
-    { path: "../assets/logo/fonts/LondrinaSolid-Regular.woff2", weight: "400" },
-  ],
-  variable: "--font-display",
+// Three faces: Londrina Solid is the logo's, kept for the wordmark alone; Special Elite sets titles
+// and buttons; SN Pro sets everything else.
+const logo = localFont({
+  src: "../assets/logo/fonts/LondrinaSolid-Regular.woff2",
+  weight: "400",
+  variable: "--font-logo",
 });
-// Next has no fallback metrics for this family, so it skips building a size-adjusted fallback.
-const text = Atkinson_Hyperlegible_Next({
-  subsets: ["latin", "latin-ext"],
-  variable: "--font-text",
-  adjustFontFallback: false,
-});
+// Special Elite comes in one weight; titles ask for 700, so the browser thickens it.
+const display = Special_Elite({ weight: "400", subsets: ["latin"], variable: "--font-display" });
+const text = SN_Pro({ subsets: ["latin", "latin-ext"], variable: "--font-text" });
 
 export const metadata: Metadata = {
   title: "audiopost",
-  description: "Browse and play any Tumblr blog's audio posts.",
+  description: "Browse and play any tumblr blog's audio posts.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${display.variable} ${text.variable}`}>
+    <html lang="en" className={`${logo.variable} ${display.variable} ${text.variable}`}>
       <body>
         {children}
         <footer>
@@ -35,8 +31,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             </a>
           </p>
           <p>
-            A revival of Topherchris&apos;s Tumblr Audio Parser, which went
-            offline years ago.
+            A revival of Topherchris&apos;s Tumblr Audio Parser
           </p>
           <p>
             This application uses the Tumblr application programming interface

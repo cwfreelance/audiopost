@@ -1,0 +1,40 @@
+.mark {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  background: var(--mark-stamp, var(--stamp));
+  mask: url("/brand/stamp.svg") center / contain no-repeat;
+
+  > svg {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+    fill: var(--mark-bars, #f0f0f0);
+  }
+
+  path {
+    transform-box: fill-box;
+    transform-origin: bottom;
+  }
+
+  /* Each bar's range and pace, so the meter never moves in step. The tallest bar may only grow a
+     little, or it would leave the stamp. */
+  path:nth-child(1) { --lo: 0.4; --hi: 1.35; --t: 520ms; }
+  path:nth-child(2) { --lo: 0.35; --hi: 1.08; --t: 680ms; }
+  path:nth-child(3) { --lo: 0.6; --hi: 2.3; --t: 430ms; }
+  path:nth-child(4) { --lo: 0.3; --hi: 1.3; --t: 610ms; }
+  path:nth-child(5) { --lo: 0.5; --hi: 1.4; --t: 470ms; }
+
+  &[data-playing="true"] path {
+    animation: meter var(--t) ease-in-out infinite alternate;
+  }
+}
+
+@keyframes meter {
+  from {
+    transform: scaleY(var(--lo));
+  }
+  to {
+    transform: scaleY(var(--hi));
+  }
+}

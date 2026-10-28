@@ -1,4 +1,5 @@
 import { useState, type CSSProperties, type RefObject } from "react";
+import { Mark } from "@/app/mark";
 import type { AudioPost } from "@/lib/posts";
 import styles from "./now-playing.module.css";
 
@@ -12,8 +13,7 @@ type Props = {
   onError: () => void;
 };
 
-// The player bar. The logo mark is the play/pause button, its level meter moving while a track
-// plays. The playback clock lives here, so its several updates a second re-render only the bar.
+// The player bar. The logo mark beside the track moves its level meter while a track plays. The playback clock lives here, so its several updates a second re-render only the bar.
 export function NowPlaying({ current, audioRef, onPrevious, onNext, onPlay, onEnded, onError }: Props) {
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
@@ -22,26 +22,7 @@ export function NowPlaying({ current, audioRef, onPrevious, onNext, onPlay, onEn
 
   return (
     <section className={styles.bar} aria-label="Now playing" hidden={!current}>
-      <button
-        type="button"
-        className={styles.mark}
-        data-playing={playing}
-        aria-label={playing ? "Pause" : "Play"}
-        onClick={() => {
-          const player = audioRef.current!;
-          if (player.paused) player.play().catch(() => {});
-          else player.pause();
-        }}
-      >
-        <span className={styles.play} />
-        <span className={styles.meter}>
-          <i />
-          <i />
-          <i />
-          <i />
-          <i />
-        </span>
-      </button>
+      <Mark className={styles.mark} playing={playing} />
       <div className={styles.track}>
         <p>
           {current?.title}
@@ -73,6 +54,20 @@ export function NowPlaying({ current, audioRef, onPrevious, onNext, onPlay, onEn
         <button type="button" aria-label="Previous track" onClick={onPrevious}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M6 5h2.5v14H6zM19 5v14L9 12z" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className={styles.toggle}
+          aria-label={playing ? "Pause" : "Play"}
+          onClick={() => {
+            const player = audioRef.current!;
+            if (player.paused) player.play().catch(() => {});
+            else player.pause();
+          }}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d={playing ? "M6.5 5h4v14h-4zM13.5 5h4v14h-4z" : "M8 5v14l11-7z"} />
           </svg>
         </button>
         <button type="button" aria-label="Next track" onClick={onNext}>

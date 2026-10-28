@@ -1,0 +1,19 @@
+.notFound {
+  display: grid;
+  gap: 1.5rem;
+  max-width: 34rem;
+
+  > a {
+    justify-self: start;
+    margin-left: -0.3rem; /* the mark's built-in padding */
+  }
+
+  > h1 {
+    margin: 2rem 0 0;
+    font-family: var(--display);
+    font-size: clamp(1.75rem, 5vw, 2.625rem);
+    font-weight: var(--display-weight);
+    line-height: 1.15;
+    text-wrap: balance;
+  }
+}

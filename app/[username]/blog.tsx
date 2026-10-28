@@ -284,7 +284,7 @@ function BlogErrorMessage({ username, error, onRetry }: { username: string; erro
   if (error.code === "blog_not_found") return <p role="alert">Sorry, we couldn&apos;t find a blog named @{username}</p>;
   if (error.code === "blog_private") return <p role="alert">Sorry, @{username}&apos;s blog is set to private</p>;
   if (error.code === "rate_limited") {
-    return <p role="alert">Oops! Tumblr is rate-limiting us. Try again in a little bit.</p>;
+    return <p role="alert">Oops! tumblr is rate-limiting us. Try again in a little bit.</p>;
   }
   return <GenericError error={error} onRetry={onRetry} />;
 }
@@ -294,7 +294,7 @@ function GenericError({ error, onRetry }: { error: BlogError; onRetry: () => voi
   const issueTitle = encodeURIComponent(`Bug report: ${code} ${error.at}`);
   return (
     <div role="alert" className={styles.error}>
-      <p>Couldn&apos;t reach Tumblr. Try again.</p>
+      <p>Couldn&apos;t reach tumblr. Try again.</p>
       <button type="button" className={styles.retry} onClick={onRetry}>
         Try again
       </button>
@@ -392,7 +392,7 @@ function Card({
         </p>
         {status?.status === "waking" && (
           <p>
-            Waking this file up. Tumblr hasn&apos;t served it in a while. Retrying in{" "}
+            Waking this file up. tumblr hasn&apos;t served it in a while. Retrying in{" "}
             {Math.ceil((status.retryAt - now) / 1000)}s…
           </p>
         )}
@@ -402,7 +402,7 @@ function Card({
             corrupted. {retry}
           </p>
         )}
-        {status?.status === "gone" && <p>This file has been deleted from Tumblr.</p>}
+        {status?.status === "gone" && <p>This file has been deleted from tumblr.</p>}
         {status?.status === "host-failed" && (
           <p>
             This file was hosted on {status.host}, which doesn&apos;t seem to be serving it anymore. {retry}

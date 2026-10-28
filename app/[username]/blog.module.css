@@ -29,7 +29,7 @@
     margin: 0;
     font-family: var(--display);
     font-size: 2.25rem;
-    font-weight: 400;
+    font-weight: var(--display-weight);
     line-height: 1.1;
     overflow-wrap: anywhere;
   }
@@ -70,13 +70,22 @@
   > li + li {
     border-top: 1px solid var(--rule);
   }
+
+  /* The rules either side of the highlighted card give way to its outline. */
+  > li:has(.current),
+  > li:has(.current) + li {
+    border-top-color: transparent;
+  }
 }
 
 /* The whole card plays its track; the title is the real button, for keyboards. */
+/* Cards sit out in the margin by their own padding, so a highlighted card's text stays in line. */
 .card {
   display: flex;
   gap: 1rem;
-  padding: 1rem 0;
+  margin: 0 -1rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
   cursor: pointer;
 
   > div {
@@ -92,7 +101,7 @@
     margin: 0;
     font-family: var(--display);
     font-size: 1.3125rem;
-    font-weight: 400;
+    font-weight: var(--display-weight);
     line-height: 1.2;
 
     > button {
@@ -127,7 +136,11 @@
   transition: background-color 200ms ease-out;
 }
 
+/* The play queue's track, playing or paused, is lifted onto a card outlined in pink. */
 .current {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 2px var(--stamp);
+
   h2 {
     color: var(--stamp-text);
   }

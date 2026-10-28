@@ -14,7 +14,11 @@
   /* The paper an art stamp is printed on, before it plays. */
   --stamp-paper: light-dark(#ffffff, #2b2b2b);
 
-  --display: var(--font-display), "Londrina Solid", sans-serif;
+  /* Three faces: the logo's own (Londrina Solid) only ever sets the wordmark; titles, buttons, and
+     fields use --display; everything else --text. */
+  --logo: var(--font-logo), "Londrina Solid", sans-serif;
+  --display: var(--font-display), "Courier New", monospace;
+  --display-weight: 700;
   --text: var(--font-text), system-ui, sans-serif;
 
   font-family: var(--text);
@@ -34,6 +38,11 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+
+  /* The landing page spreads wider than the reading column. */
+  &:has(> [data-wide]) {
+    max-width: 76rem;
+  }
 
   > footer {
     margin-top: auto;
@@ -104,7 +113,8 @@ button[type="submit"] {
   background: var(--stamp);
   color: var(--on-stamp);
   font-family: var(--display);
-  font-size: 1.3125rem;
+  font-size: 1.125rem;
+  font-weight: var(--display-weight);
   cursor: pointer;
 
   &:hover {
