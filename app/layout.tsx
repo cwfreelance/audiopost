@@ -31,11 +31,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             </a>
           </p>
           <p>
-            A revival of Topherchris&apos;s Tumblr Audio Parser
+            A revival of Topherchris&apos;s tumblr Audio Parser
           </p>
           <p>
-            This application uses the Tumblr application programming interface
-            but is not endorsed or certified by Tumblr, Inc.
+            This application uses the tumblr application programming interface
+            but is not endorsed or certified by tumblr, Inc.
           </p>
         </footer>
       </body>
