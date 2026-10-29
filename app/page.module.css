@@ -4,11 +4,12 @@
   gap: 2rem;
 }
 
-/* AUDIOPOST is 4.07em wide in Londrina Solid, so 24.4% of the page's width runs it edge to edge. */
+/* AUDIOPOST's ink in Londrina Solid runs from 0.004em to 4.056em past the A's origin, so this size
+   and offset put the A's foot on the page's left edge and the T's arm on its right. */
 .wordmark {
-  margin: 0 0 -0.5rem;
+  margin: 0 0 -0.5rem -0.004em;
   font-family: var(--logo);
-  font-size: 24.4cqi;
+  font-size: calc(100cqi / 4.052);
   font-weight: 400;
   line-height: 0.8;
   text-transform: uppercase;
