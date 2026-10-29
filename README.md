@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://github.com/cwfreelance/audiopost/actions/workflows/ci.yml"><img src="https://github.com/cwfreelance/audiopost/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/cwfreelance/audiopost" alt="MIT license"></a>
-  <img src="https://img.shields.io/badge/node-24-339933" alt="Node.js 24">
+  <a href="https://pnpm.io"><img src="https://img.shields.io/badge/pnpm-10-F69220?logo=pnpm&logoColor=white" alt="pnpm 10"></a>
 </p>
 
 <p align="center"><a href="https://audiopost.online">audiopost.online</a></p>
