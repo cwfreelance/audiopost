@@ -31,7 +31,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             </a>
           </p>
           <p>
-            A revival of Topherchris&apos;s tumblr Audio Parser
+            Inspired by <a href="https://topherchris.com/about">topherchris</a>&apos;s Tumblr Audio Parser
           </p>
           <p>
             This application uses the tumblr application programming interface
