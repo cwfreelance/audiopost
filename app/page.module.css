@@ -1,13 +1,12 @@
 .home {
   container-type: inline-size;
-  overflow-x: clip; /* the postmark's lines run off the edge on narrow screens */
   display: grid;
   gap: 2rem;
 }
 
 /* AUDIOPOST is 4.07em wide in Londrina Solid, so 24.4% of the page's width runs it edge to edge. */
 .wordmark {
-  margin: 0 0 -0.5rem -0.02em;
+  margin: 0 0 -0.5rem;
   font-family: var(--logo);
   font-size: 24.4cqi;
   font-weight: 400;
@@ -29,6 +28,7 @@
 }
 
 .intro {
+  overflow-x: clip; /* the postmark's lines run off the edge on narrow screens */
   display: grid;
   gap: 2.5rem;
   align-items: center;
