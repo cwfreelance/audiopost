@@ -68,6 +68,16 @@
 .small {
   margin: 0;
   color: var(--muted);
+
+  /* Pink alone, without an underline, like the footer's links. */
+  > a {
+    color: var(--stamp-text);
+    text-decoration: none;
+
+    &:hover {
+      color: var(--ink);
+    }
+  }
 }
 
 /* The stamp sheet, printed in the brand's three inks in turn. */

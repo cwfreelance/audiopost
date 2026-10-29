@@ -273,6 +273,16 @@
     margin: 0;
   }
 
+  /* The bug-report link matches the footer's: pink alone, without an underline. */
+  > a {
+    color: var(--stamp-text);
+    text-decoration: none;
+
+    &:hover {
+      color: var(--ink);
+    }
+  }
+
   > code {
     color: var(--muted);
     font-size: 0.875rem;
