@@ -23,8 +23,8 @@ export function UsernameForm() {
     >
       <input
         name="username"
-        aria-label="Tumblr username"
-        placeholder="Tumblr username"
+        aria-label="tumblr username"
+        placeholder="tumblr username"
         autoComplete="off"
         autoCapitalize="none"
         spellCheck={false}
@@ -34,7 +34,7 @@ export function UsernameForm() {
       <button type="submit">Listen</button>
       {invalid && (
         <p id={errorId} className={styles.error} role="alert">
-          That doesn&apos;t look like a Tumblr username.
+          That doesn&apos;t look like a tumblr username.
         </p>
       )}
     </form>

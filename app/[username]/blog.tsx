@@ -6,11 +6,13 @@ import DOMPurify from "dompurify";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { Logo } from "@/app/logo";
 import { UsernameForm } from "@/app/username-form";
 import { playQueue, type PlayQueue, type QueueEvent, type TrackStatus } from "@/lib/play-queue";
 import type { AudioPost, ErrorResponse, PostsResponse } from "@/lib/posts";
 import { parseView } from "@/lib/view";
 import styles from "./blog.module.css";
+import { NowPlaying } from "./now-playing";
 import { ViewControls } from "./view-controls";
 
 // Post bodies are Tumblr HTML: links open in a new tab. DOMPurify only works in the browser, and
@@ -188,19 +190,27 @@ export function Blog({ username }: { username: string }) {
   return (
     <>
       <header className={styles.header}>
-        <Link href="/">audiopost</Link>
-        {page?.blog.avatarUrl && <img className={styles.avatar} src={page.blog.avatarUrl} alt="" />}
-        <h1>{page?.blog.title || username}</h1>
-        {page && (
-          <>
-            <a href={page.blog.blogUrl}>@{username}</a>
-            {/* Tumblr doesn't report filtered counts. */}
-            {!view.filter && <span>{page.blog.totalAudioPosts} audio posts</span>}
-          </>
-        )}
-        <UsernameForm />
+        <nav className={styles.top}>
+          <Link href="/">
+            <Logo height={36} />
+          </Link>
+          <UsernameForm />
+        </nav>
+        <div className={styles.blog}>
+          {page?.blog.avatarUrl && <img className={styles.avatar} src={page.blog.avatarUrl} alt="" />}
+          <div>
+            <h1>{page?.blog.title || username}</h1>
+            {page && (
+              <p className={styles.about}>
+                <a href={page.blog.blogUrl}>@{username}</a>
+                {/* Tumblr doesn't report filtered counts. */}
+                {!view.filter && <span>{page.blog.totalAudioPosts} audio posts</span>}
+              </p>
+            )}
+          </div>
+        </div>
       </header>
-      <main>
+      <main className={styles.main}>
         <ViewControls view={view} />
         {page &&
           (page.posts.length ? (
@@ -210,6 +220,7 @@ export function Blog({ username }: { username: string }) {
                   <Card
                     post={post}
                     status={queue.statuses[post.id]}
+                    current={post.id === current?.id}
                     now={queue.now}
                     playExpanded={post.id === playExpanded}
                     audioStarts={audioStarts}
@@ -223,9 +234,9 @@ export function Blog({ username }: { username: string }) {
               ))}
             </ol>
           ) : view.filter ? (
-            <p>No results found. Try changing or removing the filter.</p>
+            <p className={styles.empty}>No results found. Try changing or removing the filter.</p>
           ) : (
-            <p>Sorry, @{username} hasn&apos;t posted any audio.</p>
+            <p className={styles.empty}>Sorry, @{username} hasn&apos;t posted any audio.</p>
           ))}
         {error && (
           <BlogErrorMessage
@@ -243,37 +254,25 @@ export function Blog({ username }: { username: string }) {
           <GenericError error={moreError} onRetry={() => setMoreError(undefined)} />
         ) : (
           cursor && (
-            <p ref={end} role="status">
+            <p ref={end} role="status" className={styles.loading}>
               Loading more…
             </p>
           )
         )}
       </main>
-      <section className={styles.bar} aria-label="Now playing" hidden={!current}>
-        {current?.artUrl && <img src={current.artUrl} alt="" />}
-        <p>
-          {current?.title}
-          {current?.artist && ` — ${current.artist}`}
-        </p>
-        <button type="button" aria-label="Previous track" onClick={() => send({ type: "previous" })}>
-          ◀◀
-        </button>
-        <button type="button" aria-label="Next track" onClick={() => send({ type: "next" })}>
-          ▶▶
-        </button>
-        <audio
-          ref={audio}
-          controls
-          controlsList="nodownload"
-          onPlay={() => {
-            setAudioStarts((n) => n + 1);
-            // An embed card a click expanded collapses; the playing card stays expanded.
-            setPlayExpanded((id) => (id === latest.current.current?.id ? id : undefined));
-          }}
-          onEnded={() => send({ type: "ended" })}
-          onError={() => send({ type: "error" })}
-        />
-      </section>
+      <NowPlaying
+        current={current}
+        audioRef={audio}
+        onPrevious={() => send({ type: "previous" })}
+        onNext={() => send({ type: "next" })}
+        onPlay={() => {
+          setAudioStarts((n) => n + 1);
+          // An embed card a click expanded collapses; the playing card stays expanded.
+          setPlayExpanded((id) => (id === latest.current.current?.id ? id : undefined));
+        }}
+        onEnded={() => send({ type: "ended" })}
+        onError={() => send({ type: "error" })}
+      />
     </>
   );
 }
@@ -285,7 +284,7 @@ function BlogErrorMessage({ username, error, onRetry }: { username: string; erro
   if (error.code === "blog_not_found") return <p role="alert">Sorry, we couldn&apos;t find a blog named @{username}</p>;
   if (error.code === "blog_private") return <p role="alert">Sorry, @{username}&apos;s blog is set to private</p>;
   if (error.code === "rate_limited") {
-    return <p role="alert">Oops! Tumblr is rate-limiting us. Try again in a little bit.</p>;
+    return <p role="alert">Oops! tumblr is rate-limiting us. Try again in a little bit.</p>;
   }
   return <GenericError error={error} onRetry={onRetry} />;
 }
@@ -295,8 +294,8 @@ function GenericError({ error, onRetry }: { error: BlogError; onRetry: () => voi
   const issueTitle = encodeURIComponent(`Bug report: ${code} ${error.at}`);
   return (
     <div role="alert" className={styles.error}>
-      <p>Couldn&apos;t reach Tumblr. Try again.</p>
-      <button type="button" onClick={onRetry}>
+      <p>Couldn&apos;t reach tumblr. Try again.</p>
+      <button type="button" className={styles.retry} onClick={onRetry}>
         Try again
       </button>
       <code>{code}</code>
@@ -308,6 +307,7 @@ function GenericError({ error, onRetry }: { error: BlogError; onRetry: () => voi
 type CardProps = {
   post: AudioPost;
   status?: TrackStatus;
+  current: boolean; // the play queue's track, playing or paused
   now?: number;
   playExpanded: boolean;
   audioStarts: number; // counts the shared player's starts
@@ -324,6 +324,7 @@ type CardProps = {
 function Card({
   post,
   status,
+  current,
   now = 0,
   playExpanded,
   audioStarts,
@@ -350,6 +351,7 @@ function Card({
   const retry = (
     <button
       type="button"
+      className={styles.retry}
       onClick={(e) => {
         e.stopPropagation();
         onRetry();
@@ -360,7 +362,7 @@ function Card({
   );
   return (
     <article
-      className={expanded ? `${styles.card} ${styles.expanded}` : styles.card}
+      className={[styles.card, expanded && styles.expanded, current && styles.current].filter(Boolean).join(" ")}
       onClick={() => {
         if (post.track.kind === "native") onPlay();
         else if (post.track.kind === "embed") onEmbed();
@@ -390,7 +392,7 @@ function Card({
         </p>
         {status?.status === "waking" && (
           <p>
-            Waking this file up. Tumblr hasn&apos;t served it in a while. Retrying in{" "}
+            Waking this file up. tumblr hasn&apos;t served it in a while. Retrying in{" "}
             {Math.ceil((status.retryAt - now) / 1000)}s…
           </p>
         )}
@@ -400,7 +402,7 @@ function Card({
             corrupted. {retry}
           </p>
         )}
-        {status?.status === "gone" && <p>This file has been deleted from Tumblr.</p>}
+        {status?.status === "gone" && <p>This file has been deleted from tumblr.</p>}
         {status?.status === "host-failed" && (
           <p>
             This file was hosted on {status.host}, which doesn&apos;t seem to be serving it anymore. {retry}
@@ -419,17 +421,24 @@ function Card({
           />
         )}
         {post.track.kind === "link" && (
-          <a href={post.track.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+          <a
+            className={styles.listen}
+            href={post.track.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+          >
             Listen on {providerName(post.track.provider)} ↗
           </a>
         )}
         <div
-          className={expanded ? undefined : styles.preview}
+          className={expanded ? styles.body : `${styles.body} ${styles.preview}`}
           onClick={(e) => (e.target as Element).closest("a") && e.stopPropagation()}
           dangerouslySetInnerHTML={{ __html: body }}
         />
         <button
           type="button"
+          className={styles.toggle}
           aria-expanded={expanded}
           onClick={(e) => {
             e.stopPropagation();
